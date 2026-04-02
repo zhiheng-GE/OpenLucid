@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,10 +22,13 @@ from app.schemas.app import (
     KBQAAskRequest,
     KBQAAskResponse,
     KBQAStyleResponse,
+    ScriptWriterRequest,
     TopicStudioContextPreview,
     TopicStudioRunRequest,
 )
 from app.schemas.topic_plan import TopicPlanGenerateRequest, TopicPlanGenerateResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 
@@ -162,6 +166,46 @@ async def kb_qa_ask_stream(
     svc = KBQAService(db)
     return StreamingResponse(
         svc.ask_stream(data),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Script Writer ─────────────────────────────────────────────
+
+
+@router.post("/script-writer/suggest-topic")
+async def script_writer_suggest_topic(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.application.script_writer_service import ScriptWriterService
+
+    svc = ScriptWriterService(db)
+    try:
+        topic = await svc.suggest_topic(
+            offer_id=data["offer_id"],
+            strategy_unit_id=data.get("strategy_unit_id"),
+            goal=data.get("goal", "reach_growth"),
+            language=data.get("language", "zh-CN"),
+            config_id=data.get("config_id"),
+        )
+    except Exception as e:
+        logger.exception("suggest_topic failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"topic": topic}
+
+
+@router.post("/script-writer/generate/stream")
+async def script_writer_generate_stream(
+    data: ScriptWriterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.application.script_writer_service import ScriptWriterService
+
+    svc = ScriptWriterService(db)
+    return StreamingResponse(
+        svc.generate_stream(data),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

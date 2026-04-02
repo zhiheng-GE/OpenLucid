@@ -75,3 +75,22 @@ class KBQAAskResponse(BaseModel):
     knowledge_count: int
     has_relevant_knowledge: bool
     thinking: str | None = None
+
+
+# ── Script Writer ─────────────────────────────────────────────
+
+
+class ScriptWriterRequest(BaseModel):
+    offer_id: uuid.UUID
+    strategy_unit_id: uuid.UUID | None = None
+    system_prompt: str = Field(..., min_length=1, max_length=20000)
+    topic: str = Field("", max_length=2000)
+    goal: str = Field(..., pattern="^(reach_growth|lead_generation|conversion|education|traffic_redirect|other)$")
+    tone: str | None = None
+    word_count: int = Field(150, ge=50, le=2000)
+    cta: str | None = None
+    industry: str | None = None
+    reference: str | None = Field(None, max_length=5000)
+    extra_req: str | None = Field(None, max_length=2000)
+    language: str = "zh-CN"
+    config_id: str | None = None

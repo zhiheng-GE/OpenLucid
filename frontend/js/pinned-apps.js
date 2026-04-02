@@ -9,6 +9,7 @@ const PINNED_KEY = 'od_pinned_apps';
 const APP_NAV_DEFS = {
   topic_studio: { nameKey: 'app_topic_studio', emoji: '💡', href: '/topic-studio.html' },
   kb_qa: { nameKey: 'app_kb_qa', emoji: '💬', href: '/kb-qa.html' },
+  script_writer: { nameKey: 'app_script_writer', emoji: '🎙️', href: '/script-writer.html' },
 };
 
 function getPinnedApps() {

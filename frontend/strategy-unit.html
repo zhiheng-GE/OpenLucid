@@ -196,10 +196,11 @@
                 <div class="text-sm font-medium text-gray-500" x-text="t('content_brief')"></div>
                 <div class="text-xs text-gray-400 mt-0.5" x-text="t('coming_soon')"></div>
               </div>
-              <div class="flex-1 border rounded-xl p-4 bg-gray-50 opacity-50 cursor-not-allowed">
-                <div class="text-lg mb-1">🔒</div>
-                <div class="text-sm font-medium text-gray-500" x-text="t('script_gen')"></div>
-                <div class="text-xs text-gray-400 mt-0.5" x-text="t('coming_soon')"></div>
+              <div class="flex-1 border rounded-xl p-4 hover:border-accent/50 hover:bg-accent/5 transition cursor-pointer"
+                   @click="location.href='/script-writer.html?offer_id='+offerIdParam+'&strategy_unit_id='+unitId">
+                <div class="text-lg mb-1">🎙️</div>
+                <div class="text-sm font-medium text-gray-800" x-text="t('app_script_writer')"></div>
+                <div class="text-xs text-gray-400 mt-0.5" x-text="t('script_gen_desc')"></div>
               </div>
             </div>
           </div>
