@@ -258,6 +258,92 @@ def format_strategy_focus(
     return header + "\n" + "\n".join(parts)
 
 
+# ── Asset context block ────────────────────────────────────────────────
+
+_ASSET_TYPE_LABELS_ZH: dict[str, str] = {
+    "image": "图片", "video": "视频", "audio": "音频",
+    "document": "文档", "url": "链接", "copy": "文案",
+}
+
+_MAX_ASSET_CONTENT_CHARS = 200
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """Get attribute from ORM object or dict."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def format_asset_context(
+    assets: list[Any],
+    *,
+    language: str = "zh-CN",
+    max_items: int = 5,
+) -> str:
+    """Format asset content (tags, transcript, content_text) as supplementary context.
+
+    Only includes assets that have meaningful extracted content (tags or text).
+    Accepts both ORM objects and dicts.
+    Budget: max_items assets × _MAX_ASSET_CONTENT_CHARS per item.
+    """
+    if not assets:
+        return ""
+
+    is_en = language.startswith("en")
+    entries: list[str] = []
+
+    for asset in assets:
+        if len(entries) >= max_items:
+            break
+
+        parts: list[str] = []
+        # Asset type + filename
+        atype = _get(asset, "asset_type", "")
+        fname = _get(asset, "file_name", "") or _get(asset, "title", "") or ""
+        type_label = atype if is_en else _ASSET_TYPE_LABELS_ZH.get(atype, atype)
+
+        # Tags (structured AI extraction)
+        tags = _get(asset, "tags_json")
+        if tags and isinstance(tags, dict):
+            tag_parts = []
+            for key in ("subject", "selling_point", "scenario", "usage"):
+                val = tags.get(key)
+                if val:
+                    if isinstance(val, list):
+                        tag_parts.append(f"{key}: {', '.join(str(v) for v in val)}")
+                    else:
+                        tag_parts.append(f"{key}: {val}")
+            if tag_parts:
+                parts.append("; ".join(tag_parts))
+
+        # content_text (for copy-type assets)
+        content = _get(asset, "content_text")
+        if content:
+            parts.append(content[:_MAX_ASSET_CONTENT_CHARS])
+
+        # Slice transcripts (for video/audio)
+        slices = _get(asset, "slices")
+        if slices:
+            for s in slices[:2]:  # max 2 slices per asset
+                transcript = _get(s, "transcript")
+                summary = _get(s, "summary")
+                text = transcript or summary
+                if text and not text.startswith("Image "):
+                    parts.append(text[:_MAX_ASSET_CONTENT_CHARS])
+                    break  # one meaningful slice is enough
+
+        if parts:
+            content_str = " | ".join(parts)
+            entries.append(f"- [{type_label}] {fname}: {content_str}")
+
+    if not entries:
+        return ""
+
+    header = "\nAsset references:" if is_en else "\n素材参考："
+    return header + "\n" + "\n".join(entries)
+
+
 # ── Offer context for asset tagging ──────────────────────────────────
 
 def format_offer_for_tagging(

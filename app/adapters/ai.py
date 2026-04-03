@@ -8,6 +8,7 @@ from typing import Any
 from app.adapters.prompt_builder import (
     KNOWLEDGE_TYPE_LABELS_ZH,
     OBJECTIVE_LABELS_ZH,
+    format_asset_context,
     format_existing_knowledge,
     format_knowledge_flat,
     format_knowledge_grouped,
@@ -448,6 +449,10 @@ Return JSON array only, no other text."""
             )
         knowledge_text = format_knowledge_flat(ki_list, language=language)
 
+        # Asset context (supplementary)
+        asset_items = offer_context.get("assets", [])
+        asset_text = format_asset_context(asset_items, language=language)
+
         na = "N/A" if is_en else "暂无"
         user = f"""{"Product: " if is_en else "商品名称："}{offer_name}
 {"Core selling points: " if is_en else "核心卖点："}{', '.join(selling_points) if selling_points else na}
@@ -455,6 +460,7 @@ Return JSON array only, no other text."""
 {"Scenarios: " if is_en else "适用场景："}{', '.join(scenarios) if scenarios else na}
 {channel_desc}{strategy_focus}
 {knowledge_text}
+{asset_text}
 {self._format_existing_titles(existing_titles, is_en)}{self._format_rated_titles(liked_titles, disliked_titles, is_en)}
 {"Generate" if is_en else "请生成"} {count} {"content topic plans that closely match the strategy focus above." if is_en else "个高度契合以上策略聚焦的内容选题方案。"}"""
 

@@ -8,7 +8,7 @@ from typing import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.ai import AIAdapter, OpenAICompatibleAdapter, _extract_thinking, get_ai_adapter
-from app.adapters.prompt_builder import format_knowledge_flat, format_strategy_focus
+from app.adapters.prompt_builder import format_asset_context, format_knowledge_flat, format_strategy_focus
 from app.application.context_service import ContextService
 from app.infrastructure.strategy_unit_repo import StrategyUnitRepository
 from app.schemas.app import ScriptWriterRequest
@@ -34,6 +34,7 @@ def _build_user_message(
     *,
     knowledge_text: str = "",
     strategy_text: str = "",
+    asset_text: str = "",
 ) -> str:
     """Build the user message from request parameters + context."""
     is_en = request.language.startswith("en")
@@ -70,8 +71,27 @@ def _build_user_message(
         parts.append(strategy_text)
     if knowledge_text:
         parts.append(knowledge_text)
+    if asset_text:
+        parts.append(asset_text)
 
     return "\n".join(parts)
+
+
+DEFAULT_SYSTEM_PROMPT_ZH = (
+    "你是一位专业的短视频口播文案创作专家。根据用户提供的参数，生成可直接用于数字人或真人拍摄的口播文案。"
+    "为嘴巴写字，不为眼睛写字。禁止书面语，用口语化表达。开头3秒必须抓住观众。"
+    "单句不超过30字，适配TTS合成（用逗号句号断句，禁用省略号、破折号）。"
+    "直接输出文案正文，不加标题、不加引号、不加前缀。"
+    "输出语言必须与知识库内容和选题的语言保持一致。"
+)
+
+DEFAULT_SYSTEM_PROMPT_EN = (
+    "You are an expert short-video scriptwriter. Generate spoken-word scripts for digital human or live presenter recordings. "
+    "Write for the mouth, not the eye. Use conversational language. The first 3 seconds must hook the viewer. "
+    "Keep sentences under 20 words. Optimize for TTS (use commas and periods for pacing, no ellipses or em dashes). "
+    "Output the script text directly — no title, no quotes, no preamble. "
+    "Output language MUST match the knowledge base content language."
+)
 
 
 class ScriptWriterService:
@@ -126,13 +146,30 @@ class ScriptWriterService:
                 }
                 strategy_text = format_strategy_focus(su_dict, language=request.language)
 
+        # Format asset content as supplementary context
+        asset_text = format_asset_context(
+            context.assets, language=request.language
+        )
+
         user_message = _build_user_message(
             request,
             knowledge_text=knowledge_text,
             strategy_text=strategy_text,
+            asset_text=asset_text,
         )
 
         return self.ai, user_message, len(knowledge_items)
+
+    async def generate(self, request: ScriptWriterRequest) -> dict:
+        """Non-streaming generation. Returns {"script": str, "knowledge_count": int}."""
+        adapter, user_message, knowledge_count = await self._prepare(request)
+
+        if not isinstance(adapter, OpenAICompatibleAdapter):
+            return {"script": "[Stub] No LLM configured.", "knowledge_count": knowledge_count}
+
+        result = await adapter._chat(request.system_prompt, user_message, temperature=0.8)
+        _, clean_text = _extract_thinking(result)
+        return {"script": clean_text, "knowledge_count": knowledge_count}
 
     async def suggest_topic(
         self,
@@ -187,6 +224,11 @@ class ScriptWriterService:
 
         offer_name = context.offer.name
 
+        # Format asset content as supplementary context
+        asset_text = format_asset_context(
+            context.assets, language=language
+        )
+
         if is_en:
             system = (
                 "You are a creative short-video content planner. "
@@ -196,7 +238,7 @@ class ScriptWriterService:
             user = (
                 f"Product: {offer_name}\n"
                 f"Goal: {goal_en}\n"
-                f"{strategy_text}\n{knowledge_text}\n\n"
+                f"{strategy_text}\n{knowledge_text}\n{asset_text}\n\n"
                 "Based on the product info, knowledge base, and goal above, "
                 "suggest one specific, creative topic for a short video script. "
                 "Be concrete — not generic. Output the topic only."
@@ -210,7 +252,7 @@ class ScriptWriterService:
             user = (
                 f"商品：{offer_name}\n"
                 f"内容目标：{goal_zh}\n"
-                f"{strategy_text}\n{knowledge_text}\n\n"
+                f"{strategy_text}\n{knowledge_text}\n{asset_text}\n\n"
                 "根据以上商品信息、知识库和目标，推荐一个具体的、有创意的口播选题。"
                 "要具体，不要泛泛而谈。只输出选题本身。"
             )

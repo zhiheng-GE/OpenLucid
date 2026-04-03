@@ -41,23 +41,14 @@ Three interfaces, pick what fits:
 
 ## Quick Start
 
-**Linux / macOS:**
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed and running.
 
 ```bash
 git clone https://github.com/agidesigner/OpenLucid.git
 cd OpenLucid/docker
-./install.sh
+cp .env.example .env
+docker compose up -d
 ```
-
-**Windows (CMD or PowerShell):**
-
-```cmd
-git clone https://github.com/agidesigner/OpenLucid.git
-cd OpenLucid\docker
-install.bat
-```
-
-The install script automatically checks and installs Docker & Docker Compose if missing, creates the config file, builds and starts the services, then waits until the app is ready.
 
 Once started, open **http://localhost**:
 
@@ -67,16 +58,30 @@ Once started, open **http://localhost**:
 
 > Only 2 containers (PostgreSQL + App). No Redis, no message queue, no extra dependencies.
 
+## Common Commands
+
+Run from `docker/` directory:
+
+```bash
+docker compose up -d        # Start
+docker compose down          # Stop
+docker compose restart       # Restart
+docker compose logs -f app   # View logs
+docker compose ps            # Check status
+```
+
 ## Upgrade
 
 ```bash
-cd OpenLucid/docker
-./upgrade.sh
+cd OpenLucid
+git pull origin main
+cd docker
+docker compose up -d --build
 ```
 
-The script automatically: backs up config → pulls latest code → syncs new config variables → rebuilds → restarts.
-
 Database migrations run automatically on app startup — no manual steps needed.
+
+If `.env.example` has new variables after upgrading, add them to your `.env` manually.
 
 ## Configuration
 
@@ -119,9 +124,7 @@ frontend/               # Frontend (static HTML, served by FastAPI StaticFiles)
 
 docker/                 # Production deployment
 ├── docker-compose.yml  #   Production compose
-├── .env.example        #   Config template
-├── install.sh / .bat   #   One-click install (Linux/macOS/Windows)
-└── upgrade.sh / .bat   #   One-click upgrade
+└── .env.example        #   Config template
 
 docker-compose.yml      # Development (source mount + hot reload)
 Dockerfile              # Image build
@@ -130,7 +133,7 @@ Dockerfile              # Image build
 ## Local Development
 
 ```bash
-# Start dev environment (source mounted, changes take effect immediately)
+# From project root (not docker/), uses docker-compose.yml with source mount + hot reload
 docker compose up -d
 ```
 

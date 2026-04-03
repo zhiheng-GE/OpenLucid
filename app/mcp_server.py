@@ -11,12 +11,19 @@ import uuid
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from app.config import settings
 from app.database import async_session_factory
 
 mcp = FastMCP(
     "OpenLucid",
+    transport_security=TransportSecuritySettings(
+        # Allow connections from localhost with or without explicit port
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "127.0.0.1", "localhost", "[::1]"],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*",
+                         "http://127.0.0.1", "http://localhost", "http://[::1]"],
+    ),
     instructions=(
         "OpenLucid is an AI Director Platform for merchants. "
         "Use these tools to manage merchants, offers, knowledge, assets, brand kits, generate topic plans, "
@@ -25,7 +32,8 @@ mcp = FastMCP(
         "Knowledge Base is the offer-level total cognition layer (stable facts). Strategy Units reference "
         "knowledge items and assets via link tables (many-to-many) with role, priority, and note metadata. "
         "Brand Kit (品牌规范) defines style profiles, persona, visual guidelines for a merchant or offer scope. "
-        "Start by listing merchants, then browse their offers, knowledge, brand kits, and assets."
+        "Start by listing merchants, then browse their offers, knowledge, brand kits, and assets. "
+        "Use list_apps to discover available AI apps (KB Q&A, Script Writer, Topic Studio) and run_app to invoke them."
     ),
 )
 
@@ -448,6 +456,167 @@ async def link_asset_to_strategy_unit(
         link = await svc.create(uuid.UUID(strategy_unit_id), data)
         await session.commit()
         return _serialize(link, AssetLinkResponse)
+
+
+# ── App Tools ────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def list_apps(language: str = "en") -> str:
+    """List all available OpenLucid apps and their capabilities.
+    Each app has: app_id, name, description, category, task_type,
+    required_entities, required_capabilities, entry_modes, status.
+    Use run_app to invoke an app's capability."""
+    from app.apps.registry import AppRegistry
+
+    apps = AppRegistry.list_apps()
+    result = []
+    for app in apps:
+        a = app.localized(language[:2])
+        result.append({
+            "app_id": a.app_id,
+            "name": a.name,
+            "slug": a.slug,
+            "description": a.description,
+            "icon": a.icon,
+            "category": a.category,
+            "task_type": a.task_type,
+            "required_entities": a.required_entities,
+            "required_capabilities": a.required_capabilities,
+            "entry_modes": a.entry_modes,
+            "status": a.status,
+        })
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+async def run_app(
+    app_id: str,
+    action: str,
+    offer_id: str,
+    strategy_unit_id: str | None = None,
+    language: str = "zh-CN",
+    config_id: str | None = None,
+    question: str = "",
+    style_id: str = "professional",
+    topic: str = "",
+    goal: str = "reach_growth",
+    tone: str = "",
+    word_count: int = 150,
+    cta: str = "",
+    industry: str = "",
+    reference: str = "",
+    extra_req: str = "",
+) -> str:
+    """Run an app's action. Available apps and actions:
+
+    kb_qa:
+      - ask: Answer a question based on offer knowledge base.
+        Required: question. Optional: style_id (professional|friendly|expert).
+        Returns: answer, referenced_knowledge, has_relevant_knowledge.
+
+    script_writer:
+      - suggest_topic: Suggest a creative video script topic.
+        Optional: goal, strategy_unit_id.
+        Returns: topic text.
+      - generate: Generate a spoken-word video script.
+        Optional: topic, goal, tone, word_count, cta, industry, reference, extra_req, strategy_unit_id.
+        Returns: script text, knowledge_count.
+
+    topic_studio:
+      - generate: Generate structured topic plans.
+        Optional: strategy_unit_id, count (via word_count param, default 5).
+        Returns: list of topic plans with title, angle, hook, key_points.
+    """
+    oid = uuid.UUID(offer_id)
+    suid = uuid.UUID(strategy_unit_id) if strategy_unit_id else None
+
+    if app_id == "kb_qa":
+        if action != "ask":
+            return json.dumps({"error": f"Unknown action '{action}' for kb_qa. Available: ask"})
+        from app.application.kb_qa_service import KBQAService
+        from app.schemas.app import KBQAAskRequest
+
+        async with _session_factory() as session:
+            svc = KBQAService(session)
+            req = KBQAAskRequest(
+                offer_id=oid,
+                question=question,
+                style_id=style_id,
+                language=language,
+                config_id=config_id,
+            )
+            result = await svc.ask(req)
+            return _serialize(result)
+
+    elif app_id == "script_writer":
+        if action == "suggest_topic":
+            from app.application.script_writer_service import ScriptWriterService
+
+            async with _session_factory() as session:
+                svc = ScriptWriterService(session)
+                topic_text = await svc.suggest_topic(
+                    offer_id=offer_id,
+                    strategy_unit_id=strategy_unit_id,
+                    goal=goal,
+                    language=language,
+                    config_id=config_id,
+                )
+                return json.dumps({"topic": topic_text}, ensure_ascii=False)
+
+        elif action == "generate":
+            from app.application.script_writer_service import (
+                DEFAULT_SYSTEM_PROMPT_EN,
+                DEFAULT_SYSTEM_PROMPT_ZH,
+                ScriptWriterService,
+            )
+            from app.schemas.app import ScriptWriterRequest
+
+            sys_prompt = DEFAULT_SYSTEM_PROMPT_EN if language.startswith("en") else DEFAULT_SYSTEM_PROMPT_ZH
+            async with _session_factory() as session:
+                svc = ScriptWriterService(session)
+                req = ScriptWriterRequest(
+                    offer_id=oid,
+                    strategy_unit_id=suid,
+                    system_prompt=sys_prompt,
+                    topic=topic,
+                    goal=goal,
+                    tone=tone or None,
+                    word_count=word_count,
+                    cta=cta or None,
+                    industry=industry or None,
+                    reference=reference or None,
+                    extra_req=extra_req or None,
+                    language=language,
+                    config_id=config_id,
+                )
+                result = await svc.generate(req)
+                return json.dumps(result, ensure_ascii=False, indent=2)
+        else:
+            return json.dumps({"error": f"Unknown action '{action}' for script_writer. Available: suggest_topic, generate"})
+
+    elif app_id == "topic_studio":
+        if action != "generate":
+            return json.dumps({"error": f"Unknown action '{action}' for topic_studio. Available: generate"})
+        from app.application.topic_plan_service import TopicPlanService
+        from app.schemas.topic_plan import TopicPlanGenerateRequest, TopicPlanResponse
+
+        async with _session_factory() as session:
+            svc = TopicPlanService(session)
+            req = TopicPlanGenerateRequest(
+                offer_id=oid,
+                strategy_unit_id=suid,
+                count=word_count if word_count <= 20 else 5,
+                language=language,
+            )
+            plans, thinking = await svc.generate(req)
+            await session.commit()
+            serialized = [TopicPlanResponse.model_validate(p, from_attributes=True).model_dump(mode="json") for p in plans]
+            return json.dumps(serialized, ensure_ascii=False, indent=2, default=str)
+
+    else:
+        available = ["kb_qa", "script_writer", "topic_studio"]
+        return json.dumps({"error": f"Unknown app_id '{app_id}'. Available: {available}"})
 
 
 if __name__ == "__main__":

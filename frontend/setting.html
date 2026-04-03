@@ -74,6 +74,10 @@
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         <span class="text-gray-800 font-medium" x-text="t('breadcrumb_settings')"></span>
       </div>
+      <a href="/setting.html?section=mcp" class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-2.5 py-1.5 rounded-lg transition-colors">
+        <span class="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+        MCP
+      </a>
       <div id="avatar-mount"></div>
     </header>
 
@@ -519,8 +523,8 @@
                 </button>
                 <button @click="mcpTab='openclaw'"
                         class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                        :class="mcpTab==='openclaw' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'">
-                  OpenClaw
+                        :class="mcpTab==='openclaw' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                        x-text="t('mcp_tab_openclaw')">
                 </button>
               </div>
 
