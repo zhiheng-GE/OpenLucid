@@ -30,8 +30,8 @@ class BrandKitRepository:
         offset: int = 0,
         limit: int = 20,
     ) -> tuple[list[BrandKit], int]:
-        base = select(BrandKit)
-        count_base = select(func.count()).select_from(BrandKit)
+        base = select(BrandKit).where(BrandKit.status == "active")
+        count_base = select(func.count()).select_from(BrandKit).where(BrandKit.status == "active")
 
         if scope_type:
             base = base.where(BrandKit.scope_type == scope_type)
@@ -55,6 +55,7 @@ class BrandKitRepository:
         stmt = select(BrandKit).where(
             BrandKit.scope_type == scope_type,
             BrandKit.scope_id == scope_id,
+            BrandKit.status == "active",
         ).limit(1)
         result = await self.session.execute(stmt)
         return result.scalars().first()
@@ -72,7 +73,7 @@ class BrandKitRepository:
             conditions.append(
                 (BrandKit.scope_type == "offer") & (BrandKit.scope_id.in_(offer_ids))
             )
-        stmt = select(BrandKit).where(or_(*conditions)).order_by(BrandKit.created_at.desc())
+        stmt = select(BrandKit).where(or_(*conditions)).where(BrandKit.status == "active").order_by(BrandKit.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

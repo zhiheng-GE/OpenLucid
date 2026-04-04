@@ -93,12 +93,7 @@
                     <div class="text-xs text-gray-400" x-text="merchantKit.description || t('no_description')"></div>
                   </div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-[11px] px-2 py-0.5 rounded-full font-medium"
-                        :class="merchantKit.status === 'active' ? 'bg-green-50 text-green-600' : merchantKit.status === 'archived' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-50 text-yellow-600'"
-                        x-text="{draft:t('status_draft'),active:t('status_active'),archived:t('status_archived')}[merchantKit.status] || merchantKit.status"></span>
-                  <span class="text-xs text-gray-400" x-text="new Date(merchantKit.updated_at).toLocaleDateString()"></span>
-                </div>
+                <span class="text-xs text-gray-400" x-text="new Date(merchantKit.updated_at).toLocaleDateString()"></span>
               </div>
             </a>
           </template>
@@ -134,12 +129,7 @@
                       <div class="text-xs text-gray-400" x-text="offers[kit.scope_id] ? (t('linked_to') + offers[kit.scope_id]) : ''"></div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-[11px] px-2 py-0.5 rounded-full font-medium"
-                          :class="kit.status === 'active' ? 'bg-green-50 text-green-600' : kit.status === 'archived' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-50 text-yellow-600'"
-                          x-text="{draft:t('status_draft'),active:t('status_active'),archived:t('status_archived')}[kit.status] || kit.status"></span>
-                    <span class="text-xs text-gray-400" x-text="new Date(kit.updated_at).toLocaleDateString()"></span>
-                  </div>
+                  <span class="text-xs text-gray-400" x-text="new Date(kit.updated_at).toLocaleDateString()"></span>
                 </div>
               </a>
             </template>

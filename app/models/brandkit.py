@@ -21,4 +21,4 @@ class BrandKit(BaseModel):
     visual_do_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     visual_dont_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     reference_prompt_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")

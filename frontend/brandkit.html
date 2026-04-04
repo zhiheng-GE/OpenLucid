@@ -77,13 +77,6 @@
       <span class="text-sm font-medium text-gray-800" x-text="kit.name || '...'"></span>
       <div class="flex-1"></div>
 
-      <!-- Status selector -->
-      <select x-model="kit.status" @change="saveField('status', kit.status)" class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white">
-        <option value="draft" x-text="t('bk_draft')"></option>
-        <option value="active" x-text="t('bk_active')"></option>
-        <option value="archived" x-text="t('bk_archived')"></option>
-      </select>
-
       <!-- Delete -->
       <div class="relative" x-data="{ open: false }" @click.outside="open = false">
         <button @click="open = !open" class="h-[33px] w-[33px] flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">

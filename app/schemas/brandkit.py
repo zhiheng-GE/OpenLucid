@@ -20,7 +20,7 @@ class BrandKitCreate(BaseModel):
     visual_do_json: Any = None
     visual_dont_json: Any = None
     reference_prompt_json: Any = None
-    status: BrandKitStatus = BrandKitStatus.DRAFT
+    status: BrandKitStatus = BrandKitStatus.ACTIVE
 
 
 class BrandKitUpdate(BaseModel):
@@ -33,7 +33,7 @@ class BrandKitUpdate(BaseModel):
     visual_do_json: Any = None
     visual_dont_json: Any = None
     reference_prompt_json: Any = None
-    status: BrandKitStatus | None = None
+    # status field kept for backward compat but not exposed in UI
 
 
 class BrandKitResponse(BaseModel):
@@ -49,7 +49,6 @@ class BrandKitResponse(BaseModel):
     visual_do_json: Any = None
     visual_dont_json: Any = None
     reference_prompt_json: Any = None
-    status: str
     inherited_fields: list[str] | None = None
     overridden_fields: list[str] | None = None
     created_at: datetime
