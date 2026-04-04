@@ -7,6 +7,8 @@ from app.application.coverage_service import CoverageService
 from app.application.topic_plan_service import TopicPlanService
 from app.database import get_db
 from app.schemas.coverage import (
+    MerchantCompletenessResponse,
+    OfferCompletenessScore,
     OfferCoverageReview,
     RecommendedAssetsResponse,
     RecommendedKnowledgeResponse,
@@ -17,6 +19,16 @@ from app.schemas.topic_plan import TopicPlanGenerateRequest, TopicPlanGenerateRe
 
 router_su = APIRouter(prefix="/strategy-units/{unit_id}", tags=["coverage"])
 router_offer = APIRouter(prefix="/offers/{offer_id}", tags=["coverage"])
+router_batch = APIRouter(prefix="/offers", tags=["coverage"])
+
+
+@router_batch.get("/completeness-scores", response_model=MerchantCompletenessResponse)
+async def get_completeness_scores(
+    merchant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    svc = CoverageService(db)
+    return await svc.get_batch_completeness_scores(merchant_id)
 
 
 @router_su.get("/review-coverage", response_model=StrategyUnitCoverageReview)

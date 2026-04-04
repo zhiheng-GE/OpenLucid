@@ -15,6 +15,8 @@ from app.infrastructure.strategy_unit_link_repo import (
 from app.infrastructure.strategy_unit_repo import StrategyUnitRepository
 from app.infrastructure.topic_plan_repo import TopicPlanRepository
 from app.schemas.coverage import (
+    MerchantCompletenessResponse,
+    OfferCompletenessScore,
     OfferCoverageReview,
     RecommendedAssetsResponse,
     RecommendedKnowledgeResponse,
@@ -113,6 +115,154 @@ class CoverageService:
             offer_id=offer_id,
             items=unlinked,
             total=len(unlinked),
+        )
+
+    async def get_batch_completeness_scores(
+        self, merchant_id: UUID
+    ) -> MerchantCompletenessResponse:
+        """Company-level score = avg offer scores (0-85) + merchant brandkit (0-15).
+        Per-offer score = profile(20) + knowledge(35) + strategy(15) + assets(15).
+        Uses aggregate SQL — no N+1."""
+        from sqlalchemy import text
+
+        session = self.session
+
+        # 1. Offer profile info
+        rows = (await session.execute(text(
+            "SELECT id, description, core_selling_points_json, "
+            "target_audience_json, target_scenarios_json "
+            "FROM offers WHERE merchant_id = :mid"
+        ), {"mid": merchant_id})).fetchall()
+
+        if not rows:
+            return MerchantCompletenessResponse()
+
+        offer_ids = [r[0] for r in rows]
+        profile_data = {}
+        for r in rows:
+            score = 0
+            if r[1]:  # description
+                score += 5
+            if r[2] and (isinstance(r[2], dict) and r[2].get("points")):
+                score += 5
+            if r[3] and (isinstance(r[3], dict) and r[3].get("segments")):
+                score += 5
+            if r[4] and (isinstance(r[4], dict) and r[4].get("scenarios")):
+                score += 5
+            profile_data[r[0]] = score
+
+        # 2. Knowledge by type per offer
+        ki_rows = (await session.execute(text(
+            "SELECT scope_id, knowledge_type, COUNT(*) "
+            "FROM knowledge_items WHERE scope_type = 'offer' "
+            "AND scope_id = ANY(:ids) GROUP BY scope_id, knowledge_type"
+        ), {"ids": offer_ids})).fetchall()
+
+        ki_data: dict[uuid.UUID, dict[str, int]] = {}
+        for r in ki_rows:
+            ki_data.setdefault(r[0], {})[r[1]] = r[2]
+
+        # 3. Strategy unit count per offer
+        su_rows = (await session.execute(text(
+            "SELECT offer_id, COUNT(*) FROM strategy_units "
+            "WHERE offer_id = ANY(:ids) GROUP BY offer_id"
+        ), {"ids": offer_ids})).fetchall()
+        su_data = {r[0]: r[1] for r in su_rows}
+
+        # 4. Asset count per offer
+        asset_rows = (await session.execute(text(
+            "SELECT scope_id, COUNT(*) FROM assets "
+            "WHERE scope_type = 'offer' AND scope_id = ANY(:ids) "
+            "GROUP BY scope_id"
+        ), {"ids": offer_ids})).fetchall()
+        asset_data = {r[0]: r[1] for r in asset_rows}
+
+        # 5. Merchant-level BrandKit (scope_type='merchant')
+        bk_row = (await session.execute(text(
+            "SELECT COUNT(DISTINCT bk.id), "
+            "BOOL_OR(bk.style_profile_json IS NOT NULL "
+            "  OR bk.product_visual_profile_json IS NOT NULL "
+            "  OR bk.persona_profile_json IS NOT NULL), "
+            "COUNT(DISTINCT bal.id) "
+            "FROM brandkits bk "
+            "LEFT JOIN brandkit_asset_links bal ON bal.brandkit_id = bk.id "
+            "WHERE bk.scope_type = 'merchant' AND bk.scope_id = :mid"
+        ), {"mid": merchant_id})).fetchone()
+
+        brandkit_score = 0
+        if bk_row and bk_row[0] > 0:
+            brandkit_score += 8
+            if bk_row[1]:
+                brandkit_score += 4
+            if bk_row[2] > 0:
+                brandkit_score += 3
+
+        # Compute per-offer scores (max 85)
+        offer_scores: dict[str, OfferCompletenessScore] = {}
+        for oid in offer_ids:
+            profile = profile_data.get(oid, 0)
+
+            ki_types = ki_data.get(oid, {})
+            knowledge = 0
+            if ki_types.get("selling_point", 0) > 0:
+                knowledge += 7
+            if ki_types.get("audience", 0) > 0:
+                knowledge += 7
+            if ki_types.get("scenario", 0) > 0:
+                knowledge += 7
+            if ki_types.get("faq", 0) > 0:
+                knowledge += 5
+            if ki_types.get("objection", 0) > 0:
+                knowledge += 5
+            other_types = set(ki_types.keys()) - {"selling_point", "audience", "scenario", "faq", "objection"}
+            if any(ki_types.get(t, 0) > 0 for t in other_types):
+                knowledge += 4
+
+            su_count = su_data.get(oid, 0)
+            strategy = (10 if su_count >= 1 else 0) + (5 if su_count >= 2 else 0)
+
+            a_count = asset_data.get(oid, 0)
+            assets_score = (8 if a_count >= 1 else 0) + (4 if a_count >= 3 else 0) + (3 if a_count >= 5 else 0)
+
+            total = profile + knowledge + strategy + assets_score
+
+            if profile < 20:
+                next_action = "add_description"
+            elif knowledge < 21:
+                next_action = "add_knowledge"
+            elif strategy == 0:
+                next_action = "create_strategy"
+            elif assets_score == 0:
+                next_action = "upload_assets"
+            else:
+                next_action = "done"
+
+            offer_scores[str(oid)] = OfferCompletenessScore(
+                total=total, profile=profile, knowledge=knowledge,
+                strategy=strategy, assets=assets_score, next_action=next_action,
+            )
+
+        # Company total = avg offer scores (0-85) + brandkit (0-15)
+        offer_avg = round(sum(s.total for s in offer_scores.values()) / len(offer_scores)) if offer_scores else 0
+        company_total = offer_avg + brandkit_score
+
+        # Company next action
+        if not offer_scores or offer_avg < 20:
+            company_next = "add_description"
+        elif offer_avg < 50:
+            company_next = "add_knowledge"
+        elif brandkit_score == 0:
+            company_next = "create_brandkit"
+        else:
+            # Find first non-done offer action
+            company_next = next((s.next_action for s in offer_scores.values() if s.next_action != "done"), "done")
+
+        return MerchantCompletenessResponse(
+            company_total=company_total,
+            brandkit=brandkit_score,
+            offer_avg=offer_avg,
+            next_action=company_next,
+            offers=offer_scores,
         )
 
     async def get_offer_coverage(self, offer_id: UUID) -> OfferCoverageReview:

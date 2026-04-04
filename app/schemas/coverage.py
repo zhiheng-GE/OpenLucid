@@ -40,6 +40,25 @@ class StrategyUnitGenerateTopicsRequest(BaseModel):
     count: int = Field(5, ge=1, le=20)
 
 
+class OfferCompletenessScore(BaseModel):
+    """Per-offer score (max 85): profile(20) + knowledge(35) + strategy(15) + assets(15)."""
+    total: int = 0
+    profile: int = 0
+    knowledge: int = 0
+    strategy: int = 0
+    assets: int = 0
+    next_action: str = "add_description"
+
+
+class MerchantCompletenessResponse(BaseModel):
+    """Company-level score (max 100): avg offer scores (0-85) + company brandkit (0-15)."""
+    company_total: int = 0
+    brandkit: int = 0
+    offer_avg: int = 0
+    next_action: str = "add_description"
+    offers: dict[str, OfferCompletenessScore] = {}
+
+
 class OfferCoverageReview(BaseModel):
     offer_id: uuid.UUID
     knowledge_count: int

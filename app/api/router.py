@@ -12,11 +12,12 @@ from app.api.strategy_unit_links import router as strategy_unit_links_router
 from app.api.setting import router as setting_router
 from app.api.apps import router as apps_router
 from app.api.brandkits import router as brandkits_router
-from app.api.coverage import router_su as coverage_su_router, router_offer as coverage_offer_router
+from app.api.coverage import router_su as coverage_su_router, router_offer as coverage_offer_router, router_batch as coverage_batch_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(merchants_router)
+api_router.include_router(coverage_batch_router)
 api_router.include_router(offers_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(assets_router)

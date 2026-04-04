@@ -112,6 +112,73 @@
         <button @click="openWizard()" class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-accent-hover" x-text="t('create_offer')"></button>
       </div>
 
+      <!-- Completeness Summary (company-level) -->
+      <div x-show="!loading && !dbError && scoresLoaded" x-cloak
+           class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5 mb-5">
+        <div class="flex items-center gap-5 sm:gap-8">
+          <!-- Ring Gauge -->
+          <div class="relative shrink-0 w-20 h-20 sm:w-24 sm:h-24">
+            <svg class="w-full h-full -rotate-90" viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="40" fill="none" stroke="#F3F4F6" stroke-width="6"/>
+              <circle cx="48" cy="48" r="40" fill="none"
+                      :stroke="scoreColor(overallScore.total)" stroke-width="6"
+                      stroke-linecap="round"
+                      :stroke-dasharray="ringCircum"
+                      :stroke-dashoffset="ringOffset(overallScore.total)"
+                      class="transition-all duration-1000 ease-out"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span class="text-xl sm:text-2xl font-bold tabular-nums" :style="`color:${scoreColor(overallScore.total)}`"
+                    x-text="overallScore.total"></span>
+              <span class="text-[10px] text-gray-400 -mt-0.5" x-text="scoreLabel(overallScore.total)"></span>
+            </div>
+          </div>
+
+          <!-- Dimension Bars -->
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold text-gray-800 mb-2.5" x-text="t('score_title')"></h3>
+            <div class="space-y-2">
+              <template x-for="dim in [
+                {key:'profile', max:20, label:t('score_profile')},
+                {key:'knowledge', max:35, label:t('score_knowledge')},
+                {key:'strategy', max:15, label:t('score_strategy')},
+                {key:'assets', max:15, label:t('score_assets')},
+                {key:'brandkit', max:15, label:t('score_brandkit')}
+              ]" :key="dim.key">
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] text-gray-500 w-14 sm:w-16 shrink-0 truncate" x-text="dim.label"></span>
+                  <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-700 ease-out"
+                         :style="`width:${(overallScore[dim.key]/dim.max)*100}%; background:${scoreColor(overallScore.total)}`"></div>
+                  </div>
+                  <span class="text-[10px] text-gray-400 w-8 text-right tabular-nums shrink-0"
+                        x-text="overallScore[dim.key] + '/' + dim.max"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Next Action CTA -->
+          <div x-show="overallScore.next_action !== 'done'" class="hidden sm:flex flex-col items-center gap-1.5 shrink-0 pl-4 border-l border-gray-100">
+            <span class="text-[10px] text-gray-400 uppercase tracking-wider" x-text="t('score_next')"></span>
+            <a :href="'#'" @click.prevent="goNextAction()"
+               class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-accent/10 text-accent hover:bg-accent/20">
+              <span x-text="scoreActionLabel(overallScore.next_action)"></span>
+              <span class="ml-1">&rarr;</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Mobile next action -->
+        <div x-show="overallScore.next_action !== 'done'" class="sm:hidden mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <span class="text-[11px] text-gray-400" x-text="t('score_next')"></span>
+          <a :href="'#'" @click.prevent="goNextAction()"
+             class="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent">
+            <span x-text="scoreActionLabel(overallScore.next_action)"></span> &rarr;
+          </a>
+        </div>
+      </div>
+
       <!-- Offer Grid -->
       <div x-show="!loading && !dbError && offers.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <template x-for="o in offers" :key="o.id">
@@ -132,6 +199,19 @@
                 <template x-for="sp in (o.core_selling_points_json?.points || []).slice(0, 3)">
                   <span class="bg-gray-50 text-gray-500 text-[11px] px-2 py-0.5 rounded-full" x-text="sp"></span>
                 </template>
+              </div>
+
+              <!-- Completeness Score -->
+              <div x-show="scoresLoaded && getScore(o.id)" class="mt-3 pt-2.5 border-t border-gray-100">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-700"
+                         :style="`width:${getScore(o.id)?.total || 0}%; background:${scoreColor(getScore(o.id)?.total || 0)}`"></div>
+                  </div>
+                  <span class="text-xs font-semibold tabular-nums shrink-0" :style="`color:${scoreColor(getScore(o.id)?.total || 0)}`"
+                        x-text="getScore(o.id)?.total || 0"></span>
+                  <span class="text-[11px] text-gray-400 shrink-0 hidden sm:inline" x-text="scoreLabel(getScore(o.id)?.total || 0)"></span>
+                </div>
               </div>
             </a>
             <!-- Dropdown -->
@@ -446,12 +526,15 @@
           localStorage.removeItem(WORKSPACE_KEY);
         }
 
-        // 2. Look for a workspace merchant (check both language variants)
+        // 2. Look for a workspace merchant
         const res = await fetch(`${API}/merchants?page=1&page_size=100`);
         if (!res.ok) return null;
         const data = await res.json();
+        // Prefer named workspace; fallback: only merchant; fallback: first in list
         const wsNames = ['My Workspace', '我的工作区'];
-        const mine = data.items.find(m => wsNames.includes(m.name));
+        const mine = data.items.find(m => wsNames.includes(m.name))
+          || (data.items.length === 1 ? data.items[0] : null)
+          || data.items[0] || null;
         if (mine) { localStorage.setItem(WORKSPACE_KEY, mine.id); return mine; }
 
         // 3. No workspace yet — create one
@@ -469,6 +552,7 @@
     function app() {
       return {
         workspace: null, offers: [], loading: false, dbError: false,
+        companyScore: null, offerScores: {}, scoresLoaded: false,
         aiReady: null, // null=checking, true=ready, false=not configured
         aiProvider: null, // provider name from /ai/status
         showNoLLMDialog: false,
@@ -502,7 +586,7 @@
           document.title = t('page_title') + ' - OpenLucid';
           this.workspace = await ensureWorkspace();
           if (!this.workspace) { this.dbError = true; return; }
-          await Promise.all([this.fetchOffers(), this.checkAI()]);
+          await Promise.all([this.fetchOffers(), this.checkAI(), this.fetchScores()]);
         },
 
         async checkAI() {
@@ -514,6 +598,76 @@
               this.aiProvider = d.provider || null;
             }
           } catch { this.aiReady = false; }
+        },
+
+        async fetchScores() {
+          if (!this.workspace) return;
+          try {
+            const res = await fetch(`${API}/offers/completeness-scores?merchant_id=${this.workspace.id}`);
+            if (res.ok) {
+              const data = await res.json();
+              this.companyScore = { total: data.company_total, brandkit: data.brandkit, offer_avg: data.offer_avg, next_action: data.next_action };
+              this.offerScores = data.offers || {};
+              this.scoresLoaded = true;
+            }
+          } catch {}
+        },
+
+        getScore(id) { return this.offerScores[id] || null; },
+
+        scoreColor(n) {
+          if (n >= 85) return '#10B981';
+          if (n >= 60) return '#155EEF';
+          if (n >= 30) return '#F59E0B';
+          return '#EF4444';
+        },
+
+        scoreLabel(n) {
+          if (n >= 85) return t('score_excellent');
+          if (n >= 60) return t('score_well_prepared');
+          if (n >= 30) return t('score_building_up');
+          return t('score_getting_started');
+        },
+
+        get overallScore() {
+          const zero = { total: 0, profile: 0, knowledge: 0, brandkit: 0, strategy: 0, assets: 0, next_action: 'add_description' };
+          if (!this.companyScore) return zero;
+          const vals = Object.values(this.offerScores);
+          const n = vals.length || 1;
+          const avg = (k) => Math.round(vals.reduce((a, v) => a + (v[k] || 0), 0) / n);
+          return {
+            total: this.companyScore.total,
+            profile: avg('profile'),
+            knowledge: avg('knowledge'),
+            brandkit: this.companyScore.brandkit,
+            strategy: avg('strategy'),
+            assets: avg('assets'),
+            next_action: this.companyScore.next_action,
+          };
+        },
+
+        // SVG ring helpers (radius 40, circumference 251.3)
+        ringCircum: 251.3,
+        ringOffset(score) { return this.ringCircum - (this.ringCircum * score / 100); },
+
+        goNextAction() {
+          if (!this.offers.length) { this.openWizard(); return; }
+          const action = this.overallScore.next_action;
+          if (action === 'create_brandkit') { window.location = '/brandkit-list.html'; return; }
+          window.location = '/offer.html?id=' + this.offers[0].id;
+        },
+
+        scoreActionLabel(action) {
+          if (!this.offers.length) return t('score_create_offer');
+          const map = {
+            add_description: t('score_add_description'),
+            add_knowledge: t('score_add_knowledge'),
+            create_brandkit: t('score_create_brandkit'),
+            create_strategy: t('score_create_strategy'),
+            upload_assets: t('score_upload_assets'),
+            done: t('score_all_set'),
+          };
+          return map[action] || action;
         },
 
         async deleteOffer(id) {
