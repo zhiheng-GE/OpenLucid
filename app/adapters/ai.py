@@ -303,12 +303,14 @@ class OpenAICompatibleAdapter(AIAdapter):
                     await asyncio.sleep(wait)
         raise last_err  # type: ignore[misc]
 
-    async def _chat_stream(self, system_prompt: str, user_prompt: str, temperature: float = 0.8):
+    async def _chat_stream(self, system_prompt: str, user_prompt: str, temperature: float = 0.8,
+                           timeout: float = 180):
         """Async generator that yields token strings as they arrive."""
         import asyncio
         last_err = None
         for attempt in range(3):
             try:
+                deadline = asyncio.get_event_loop().time() + timeout
                 stream = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -319,6 +321,8 @@ class OpenAICompatibleAdapter(AIAdapter):
                     stream=True,
                 )
                 async for chunk in stream:
+                    if asyncio.get_event_loop().time() > deadline:
+                        raise TimeoutError(f"LLM stream exceeded {timeout}s total timeout")
                     delta = chunk.choices[0].delta if chunk.choices else None
                     if delta and delta.content:
                         yield delta.content
@@ -755,7 +759,7 @@ Return strictly valid JSON:
 Rules:
 - Each entry must be specific and actionable, not generic
 - confidence: your certainty about the inference (0-1)
-- If existing knowledge entries are provided, fill in missing dimensions without repeating them
+- CRITICAL: If existing knowledge entries are provided below, do NOT generate entries that cover the same topic, even with different wording. Only generate entries for genuinely NEW information not already covered. If all dimensions are well covered, return empty arrays.
 - IMPORTANT: Write all title and content_raw values in the SAME language as the input material. Do NOT translate.
 - Return JSON only, no other text
 - Do NOT include any thinking or reasoning process in your response. Output the JSON directly."""
@@ -822,7 +826,7 @@ Return strictly valid JSON:
 Rules:
 - Each entry must be specific and actionable, not generic
 - confidence: your certainty about the inference (0-1)
-- If existing knowledge entries are provided, fill in missing dimensions without repeating them
+- CRITICAL: If existing knowledge entries are provided below, do NOT generate entries that cover the same topic, even with different wording. Only generate entries for genuinely NEW information not already covered. If all dimensions are well covered, return empty arrays.
 - IMPORTANT: Write all title and content_raw values in the SAME language as the input material. Do NOT translate."""
 
         user = format_offer_summary(offer_data, language="en") + existing_text

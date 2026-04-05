@@ -822,9 +822,10 @@
             await new Promise(r => setTimeout(r, 400));
             this.wizard.suggestions = data.suggestions;
             if (data.description) this.wizard.aiDescription = data.description;
-          } catch {
+          } catch (e) {
             clearInterval(timer);
-            alert(t('ai_infer_failed'));
+            const detail = e.message || '';
+            alert(t('ai_infer_failed') + (detail ? '\n' + detail : ''));
             this.wizard.step = 0;
           }
           this.wizard.inferring = false;

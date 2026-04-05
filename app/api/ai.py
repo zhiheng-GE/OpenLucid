@@ -12,11 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.ai import get_ai_adapter, OpenAICompatibleAdapter, StubAIAdapter
 from app.api.deps import get_db
-from app.application.context_service import ContextService
 from app.schemas.ai import (
     ExtractTextResponse,
-    InferKnowledgeRequest,
-    InferKnowledgeResponse,
     InferOfferKnowledgeRequest,
     InferOfferKnowledgeResponse,
     InferredKnowledgeItem,
@@ -38,6 +35,21 @@ async def ai_status(db: AsyncSession = Depends(get_db)):
     return {"ready": ready, **info}
 
 
+def _build_offer_data(body: InferOfferKnowledgeRequest) -> dict:
+    """Build offer_data dict from request. Shared by stream and non-stream endpoints."""
+    knowledge_items = []
+    if body.existing_knowledge:
+        knowledge_items = [
+            {"knowledge_type": k.knowledge_type, "title": k.title, "content_raw": k.content_raw}
+            for k in body.existing_knowledge
+        ]
+    return {
+        "offer": {"name": body.name, "offer_type": body.offer_type, "description": body.description},
+        "selling_points": [], "target_audiences": [], "target_scenarios": [],
+        "knowledge_items": knowledge_items,
+    }
+
+
 def _build_suggestions(raw: dict) -> dict[str, list[InferredKnowledgeItem]]:
     suggestions = {}
     for category, items in raw.items():
@@ -53,57 +65,10 @@ def _build_suggestions(raw: dict) -> dict[str, list[InferredKnowledgeItem]]:
     return suggestions
 
 
-@router.post("/infer-knowledge", response_model=InferKnowledgeResponse)
-async def infer_knowledge(body: InferKnowledgeRequest, db: AsyncSession = Depends(get_db)):
-    """Infer knowledge from an existing offer."""
-    ctx_service = ContextService(db)
-    context = await ctx_service.get_offer_context(body.offer_id)
-    context_dict = context.model_dump(mode="json")
-
-    adapter = await get_ai_adapter(db, scene_key="knowledge")
-    if isinstance(adapter, StubAIAdapter):
-        raise HTTPException(
-            status_code=503,
-            detail="NO_LLM_CONFIGURED",
-        )
-    try:
-        raw = await adapter.infer_knowledge(context_dict, body.language, body.user_hint)
-    except Exception as e:
-        ki_count = len(context_dict.get("knowledge_items", []))
-        logger.error(
-            "infer-knowledge failed | offer=%s name=%s knowledge_items=%d lang=%s hint=%s | %s",
-            body.offer_id, context.offer.name, ki_count, body.language, body.user_hint, e,
-            exc_info=True,
-        )
-        raise HTTPException(status_code=502, detail=f"LLM_CALL_FAILED: {e}")
-
-    if not raw:
-        logger.error("infer-knowledge returned empty | offer=%s name=%s",
-                      body.offer_id, context.offer.name)
-        raise HTTPException(status_code=502, detail="LLM returned empty response")
-
-    return InferKnowledgeResponse(
-        offer_id=body.offer_id,
-        offer_name=context.offer.name,
-        suggestions=_build_suggestions(raw),
-    )
-
-
 @router.post("/infer-offer-knowledge", response_model=InferOfferKnowledgeResponse)
 async def infer_offer_knowledge(body: InferOfferKnowledgeRequest, db: AsyncSession = Depends(get_db)):
-    """Infer knowledge from raw offer info (no offer_id needed).
-    Used during offer creation before the offer exists in DB."""
-    offer_data = {
-        "offer": {
-            "name": body.name,
-            "offer_type": body.offer_type,
-            "description": body.description,
-        },
-        "selling_points": [],
-        "target_audiences": [],
-        "target_scenarios": [],
-        "knowledge_items": [],
-    }
+    """Infer knowledge from offer info. Works for both creation (no existing) and update (with existing)."""
+    offer_data = _build_offer_data(body)
 
     adapter = await get_ai_adapter(db, scene_key="knowledge")
     if isinstance(adapter, StubAIAdapter):
@@ -140,10 +105,7 @@ async def infer_offer_knowledge(body: InferOfferKnowledgeRequest, db: AsyncSessi
 @router.post("/infer-offer-knowledge-stream")
 async def infer_offer_knowledge_stream(body: InferOfferKnowledgeRequest, db: AsyncSession = Depends(get_db)):
     """Streaming version: sends SSE events with thinking text, then final result."""
-    offer_data = {
-        "offer": {"name": body.name, "offer_type": body.offer_type, "description": body.description},
-        "selling_points": [], "target_audiences": [], "target_scenarios": [], "knowledge_items": [],
-    }
+    offer_data = _build_offer_data(body)
 
     adapter = await get_ai_adapter(db, scene_key="knowledge")
     if isinstance(adapter, StubAIAdapter):
@@ -232,6 +194,18 @@ async def _extract_url_text(url: str) -> str:
             400,
             "This page returned very little text content — it likely requires "
             "JavaScript to render. Please copy and paste the page content directly.",
+        )
+
+    # Detect code/script noise in extracted text (SPA frameworks leak inline JS)
+    noise_chars = sum(1 for c in text if c in '{}();=>')
+    noise_ratio = noise_chars / len(text) if text else 0
+    if noise_ratio > 0.03:
+        logger.warning("URL text has high code noise (%.1f%%): %s", noise_ratio * 100, url)
+        raise HTTPException(
+            400,
+            "The extracted page content contains too much script/code noise — "
+            "this site likely requires JavaScript to render properly. "
+            "Please copy and paste the page content directly.",
         )
 
     return text

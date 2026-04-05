@@ -286,7 +286,7 @@
         <!-- ====== KNOWLEDGE TAB ====== -->
         <div x-show="tab==='knowledge'" @click="knowledgeMenu = null">
           <!-- Action Bar -->
-          <div class="flex items-center gap-3 mb-5">
+          <div class="flex items-center gap-3 mb-3">
             <button @click="inferKnowledge()" :disabled="inferring"
                     class="bg-gradient-to-r from-purple-600 to-accent text-white px-4 py-2 rounded-lg text-[13px] font-medium hover:opacity-90 disabled:opacity-50 transition flex items-center gap-2">
               <svg x-show="!inferring" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
@@ -296,6 +296,31 @@
             <button @click="showAddManual = true" class="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-[13px] hover:bg-gray-50 transition" x-text="t('manual_add')"></button>
             <div class="flex-1"></div>
             <span class="text-sm text-gray-400" x-text="knowledgeTotal + t('knowledge_items_count')"></span>
+          </div>
+          <!-- Search -->
+          <div class="relative mb-5" x-show="knowledgeItems.length > 0">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" x-model="knowledgeSearchQ" :placeholder="t('knowledge_search_placeholder')"
+                   class="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-white">
+            <button x-show="knowledgeSearchQ" @click="knowledgeSearchQ=''" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <!-- AI Progress -->
+          <div x-show="inferring" x-cloak class="mb-5 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div class="max-w-md mx-auto text-center">
+              <p class="text-sm font-medium text-gray-700 mb-1" x-text="inferProgressLabel"></p>
+              <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1.5">
+                <div class="h-full rounded-full bg-gradient-to-r from-purple-500 to-accent transition-all duration-300"
+                     :style="'width:' + Math.round(inferProgress) + '%'"></div>
+              </div>
+              <span class="text-xs text-gray-400" x-text="Math.round(inferProgress) + '%'"></span>
+              <div x-show="inferThinkingText" x-transition class="mt-3 bg-gray-50 rounded-lg p-2.5 text-left max-h-12 overflow-hidden relative">
+                <p class="text-[11px] text-gray-400 leading-relaxed whitespace-pre-wrap" x-text="inferThinkingText"></p>
+                <div class="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-50 to-transparent"></div>
+              </div>
+            </div>
           </div>
 
           <!-- AI Suggestions -->
@@ -400,11 +425,13 @@
 
           <!-- Knowledge List -->
           <div x-show="knowledgeItems.length > 0" class="space-y-6">
+            <!-- No results hint -->
+            <div x-show="knowledgeSearchQ && filteredKnowledge.length === 0" class="text-center py-8 text-sm text-gray-400" x-text="t('knowledge_search_empty')"></div>
             <template x-for="[catKey, catLabel] of catEntries" :key="'k-'+catKey">
-              <div x-show="knowledgeItems.filter(k => k.knowledge_type === catKey).length > 0">
+              <div x-show="filteredKnowledge.filter(k => k.knowledge_type === catKey).length > 0">
                 <h4 class="text-[13px] font-semibold text-gray-500 uppercase tracking-wide mb-2" x-text="catLabel"></h4>
                 <div class="space-y-2">
-                  <template x-for="k in knowledgeItems.filter(k => k.knowledge_type === catKey)" :key="k.id">
+                  <template x-for="k in filteredKnowledge.filter(k => k.knowledge_type === catKey)" :key="k.id">
                     <div class="bg-white rounded-lg border border-gray-100 p-4 group hover:shadow-sm transition-shadow relative">
                       <div class="flex items-start justify-between gap-3">
                         <div class="flex-1 min-w-0">
@@ -1169,6 +1196,8 @@
         // Knowledge
         knowledgeItems: [], knowledgeTotal: 0,
         suggestions: null, inferring: false, saving: false,
+        inferProgress: 0, inferProgressLabel: '', inferThinkingText: '',
+        knowledgeSearchQ: '',
         showInferInput: false, inferHint: '', inferUrl: '', inferFile: null, inferFileName: '', inferExtracting: false,
         showAddManual: false,
         manualForm: { knowledge_type: 'selling_point', title: '', content_raw: '' },
@@ -1332,7 +1361,7 @@
               const fd = new FormData(); fd.append('url', this.inferUrl.trim());
               const r = await fetch(`${API}/ai/extract-text`, { method: 'POST', body: fd });
               if (r.ok) { const d = await r.json(); if (d.text) parts.push(d.text); }
-              else alert(t('infer_url_failed'));
+              else { const err = await r.json().catch(() => ({})); alert(err.detail || t('infer_url_failed')); }
             }
             if (this.inferFile) {
               const fd = new FormData(); fd.append('file', this.inferFile);
@@ -1343,22 +1372,75 @@
           } catch { alert(t('extract_error')); }
           this.inferExtracting = false;
           this.showInferInput = false;
+
+          // If user provided no new material and knowledge is already substantial, warn
+          if (!parts.length && this.knowledgeItems.length >= 10) {
+            alert(t('infer_need_material'));
+            return;
+          }
+
           this.inferring = true;
+          this.inferProgress = 0;
+          this.inferProgressLabel = t('ai_analyzing');
+          this.inferThinkingText = '';
+
+          // Asymptotic progress curve
+          const startTime = Date.now();
+          const T = 20000;
+          const timer = setInterval(() => {
+            this.inferProgress = 98 * (1 - Math.exp(-(Date.now() - startTime) / T));
+          }, 300);
+
           try {
-            const res = await fetch(`${API}/ai/infer-knowledge`, {
+            const existing = this.knowledgeItems.map(k => ({
+              knowledge_type: k.knowledge_type, title: k.title, content_raw: k.content_raw || '',
+            }));
+            const desc = parts.length ? parts.join('\n\n') : (this.overview?.offer?.description || '');
+            const res = await fetch(`${API}/ai/infer-offer-knowledge-stream`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ offer_id: this.offerId, user_hint: parts.length ? parts.join('\n\n') : null, language: getApiLang() }),
+              body: JSON.stringify({
+                name: this.overview?.offer?.name || '',
+                offer_type: this.overview?.offer?.offer_type || 'product',
+                description: desc,
+                language: getApiLang(),
+                existing_knowledge: existing.length ? existing : null,
+              }),
             });
             if (!res.ok) {
-              if (res.status === 503) {
-                this.showNoLLMDialog = true;
-              } else {
-                alert(t('ai_infer_failed'));
-              }
+              clearInterval(timer);
+              if (res.status === 503) { this.showNoLLMDialog = true; }
+              else { alert(t('ai_infer_failed')); }
               this.inferring = false;
               return;
             }
-            const data = await res.json();
+            // Read SSE stream
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let data = null;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop();
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                  const evt = JSON.parse(line.slice(6));
+                  if (evt.type === 'thinking') {
+                    this.inferThinkingText = (this.inferThinkingText + evt.text).slice(-200);
+                    if (this.inferProgress < 95) this.inferProgress += 0.2;
+                  } else if (evt.type === 'result') {
+                    data = evt;
+                  } else if (evt.type === 'error') throw new Error(evt.detail);
+                } catch (e) { if (e.message && !e.message.includes('JSON')) throw e; }
+              }
+            }
+            clearInterval(timer);
+            if (!data) throw new Error('No result');
+            this.inferProgress = 100;
+            this.inferProgressLabel = t('done');
             for (const [cat, items] of Object.entries(data.suggestions)) {
               for (const item of items) {
                 item._selected = true;
@@ -1370,8 +1452,20 @@
               }
             }
             this.suggestions = data.suggestions;
-          } catch { alert(t('ai_infer_failed')); }
+          } catch (e) {
+            clearInterval(timer);
+            const detail = e.message || '';
+            alert(t('ai_infer_failed') + (detail ? '\n' + detail : ''));
+          }
           this.inferring = false;
+        },
+
+        get filteredKnowledge() {
+          const q = this.knowledgeSearchQ.trim().toLowerCase();
+          if (!q) return this.knowledgeItems;
+          return this.knowledgeItems.filter(k =>
+            (k.title || '').toLowerCase().includes(q) || (k.content_raw || '').toLowerCase().includes(q)
+          );
         },
 
         get updateItems() {

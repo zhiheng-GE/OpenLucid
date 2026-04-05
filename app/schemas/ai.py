@@ -22,12 +22,19 @@ class InferKnowledgeResponse(BaseModel):
     suggestions: dict[str, list[InferredKnowledgeItem]]
 
 
+class ExistingKnowledgeItem(BaseModel):
+    knowledge_type: str
+    title: str
+    content_raw: str = ""
+
+
 class InferOfferKnowledgeRequest(BaseModel):
-    """Infer knowledge from raw offer info (no offer_id needed)."""
+    """Infer knowledge from offer info. Works for both creation and update."""
     name: str
     offer_type: str = "product"
     description: str = ""
     language: str = "zh-CN"
+    existing_knowledge: list[ExistingKnowledgeItem] | None = None
 
 
 class InferOfferKnowledgeResponse(BaseModel):
