@@ -166,10 +166,12 @@ async def check_version():
         pass
     if not current:
         try:
-            current = subprocess.run(
+            proc = subprocess.run(
                 ["git", "describe", "--tags", "--abbrev=0"],
                 capture_output=True, text=True, timeout=5,
-            ).stdout.strip().lstrip("v") or None
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                current = proc.stdout.strip().lstrip("v")
         except Exception:
             pass
     if not current:
