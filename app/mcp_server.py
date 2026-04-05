@@ -6,7 +6,10 @@ Run with: python -m app.mcp_server
 """
 from __future__ import annotations
 
+import functools
 import json
+import logging
+import time
 import uuid
 from typing import Any
 
@@ -72,6 +75,56 @@ def _serialize(obj: Any, schema_cls: type | None = None) -> str:
                 items.append(item)
         return json.dumps(items, ensure_ascii=False, indent=2, default=str)
     return json.dumps(obj, ensure_ascii=False, indent=2, default=str)
+
+
+logger = logging.getLogger("mcp.audit")
+
+
+def _patch_mcp_tools():
+    """Wrap all registered MCP tools with audit logging."""
+    original_tool = mcp.tool
+
+    @functools.wraps(original_tool)
+    def logged_tool(*deco_args, **deco_kwargs):
+        decorator = original_tool(*deco_args, **deco_kwargs)
+
+        def wrapper(fn):
+            @functools.wraps(fn)
+            async def instrumented(**kwargs):
+                tool_name = fn.__name__
+                # Build compact args summary (skip empty/default values)
+                args_summary = {k: v for k, v in kwargs.items()
+                                if v is not None and v != "" and k not in ("page", "page_size")}
+                t0 = time.monotonic()
+                try:
+                    result = await fn(**kwargs)
+                    elapsed = time.monotonic() - t0
+                    # Extract result count if available
+                    count = ""
+                    try:
+                        parsed = json.loads(result)
+                        if isinstance(parsed, dict) and "total" in parsed:
+                            count = f" results={parsed['total']}"
+                        elif isinstance(parsed, dict) and "error" in parsed:
+                            count = f" error={parsed['error'][:80]}"
+                    except Exception:
+                        pass
+                    logger.info("tool=%s args=%s%s duration=%.2fs",
+                                tool_name, args_summary, count, elapsed)
+                    return result
+                except Exception as e:
+                    elapsed = time.monotonic() - t0
+                    logger.warning("tool=%s args=%s error=%s duration=%.2fs",
+                                   tool_name, args_summary, e, elapsed)
+                    raise
+
+            return decorator(instrumented)
+        return wrapper
+
+    mcp.tool = logged_tool
+
+
+_patch_mcp_tools()
 
 
 # ── Merchant Tools ──────────────────────────────────────────────
