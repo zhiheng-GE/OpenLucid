@@ -147,36 +147,13 @@ async def delete_mcp_token(token_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 @router.get("/version")
 async def check_version():
-    """Return current version and check GitHub for latest.
-    Uses git tags as source of truth — no need to manually update VERSION."""
-    import pathlib
-    import subprocess
+    """Return current version and check GitHub for latest."""
     import httpx
     from packaging.version import Version, InvalidVersion
+    from app.config import VERSION
 
     REPO = "agidesigner/OpenLucid"
-
-    # Get current version: .version file (Docker) → git tag (dev) → config.py (fallback)
-    current = None
-    try:
-        v = pathlib.Path("/app/.version").read_text().strip()
-        if v:
-            current = v.lstrip("v")
-    except Exception:
-        pass
-    if not current:
-        try:
-            proc = subprocess.run(
-                ["git", "describe", "--tags", "--abbrev=0"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if proc.returncode == 0 and proc.stdout.strip():
-                current = proc.stdout.strip().lstrip("v")
-        except Exception:
-            pass
-    if not current:
-        from app.config import VERSION
-        current = VERSION
+    current = VERSION
 
     result = {"current": current, "latest": None, "update_available": False, "check_failed": False, "release_url": None, "release_notes": None}
 
