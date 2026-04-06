@@ -32,8 +32,8 @@ class StorageAdapter(ABC):
     def get_public_url(self, asset_id: str) -> str:
         """Get a publicly accessible URL for an asset.
         Local: proxied through app. OSS/NAS: direct URL. Override in subclass."""
-        from app.config import get_public_url
-        return f"{get_public_url()}/api/v1/assets/{asset_id}/file"
+        from app.config import settings
+        return f"{settings.APP_URL.rstrip('/')}/api/v1/assets/{asset_id}/file"
 
 
 class LocalStorageAdapter(StorageAdapter):
