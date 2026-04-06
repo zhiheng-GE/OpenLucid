@@ -558,10 +558,9 @@
         const res = await fetch(`${API}/merchants?page=1&page_size=100`);
         if (!res.ok) return null;
         const data = await res.json();
-        // Prefer named workspace; fallback: only merchant; fallback: first in list
-        const wsNames = ['My Workspace', '我的工作区'];
-        const mine = data.items.find(m => wsNames.includes(m.name))
-          || (data.items.length === 1 ? data.items[0] : null)
+        // Prefer merchant with real name; fallback: default-named; fallback: first
+        const defaultNames = ['My Workspace', '我的工作区'];
+        const mine = data.items.find(m => !defaultNames.includes(m.name))
           || data.items[0] || null;
         if (mine) { localStorage.setItem(WORKSPACE_KEY, mine.id); return mine; }
 
