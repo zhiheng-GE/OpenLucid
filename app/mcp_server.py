@@ -338,9 +338,10 @@ async def search_assets(
             page_size=page_size,
         )
         serialized_items = []
+        base = settings.APP_URL.rstrip("/")
         for i in items:
             d = AssetResponse.model_validate(i, from_attributes=True).model_dump(mode="json")
-            d["preview_url"] = storage.get_public_url(d["id"])
+            d["preview_url"] = f"{base}/api/v1/assets/{d['id']}/file"
             d.pop("preview_uri", None)  # remove ambiguous null field
             d.pop("storage_uri", None)  # internal path, not for agents
             serialized_items.append(d)

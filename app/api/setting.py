@@ -240,18 +240,6 @@ async def check_version():
     return result
 
 
-@router.get("/setup-warnings")
-async def setup_warnings():
-    """Return a list of setup issues the user should fix."""
-    from app.config import settings
-    warnings = []
-    if settings.APP_URL in ("http://localhost", "http://localhost:8000"):
-        warnings.append("app_url_not_set")
-    if settings.SECRET_KEY == "change-me-in-production-use-a-long-random-string":
-        warnings.append("secret_key_default")
-    return {"warnings": warnings}
-
-
 @router.get("/logs")
 async def get_logs(n: int = Query(100, le=200)):
     from app.libs.log_buffer import get_log_handler

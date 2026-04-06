@@ -200,7 +200,6 @@ async def limit_body_size(request: Request, call_next):
 
 
 @_fastapi_app.middleware("http")
-@_fastapi_app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
