@@ -201,6 +201,14 @@ async def limit_body_size(request: Request, call_next):
 
 @_fastapi_app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    # Auto-detect public URL from first real request (behind nginx)
+    import app.config as _cfg
+    if _cfg._detected_public_url is None:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if host and host not in ("localhost", "127.0.0.1", "localhost:8000"):
+            proto = request.headers.get("x-forwarded-proto", "https")
+            _cfg._detected_public_url = f"{proto}://{host}"
+
     path = request.url.path
 
     # Only protect /api/* routes

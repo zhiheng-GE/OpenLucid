@@ -41,3 +41,17 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Auto-detected public URL from first incoming request (set by middleware)
+_detected_public_url: str | None = None
+_APP_URL_DEFAULTS = {"http://localhost", "http://localhost:8000"}
+
+
+def get_public_url() -> str:
+    """Return the best known public URL.
+    Priority: explicit APP_URL (if user changed it) → auto-detected from Host header → fallback."""
+    if settings.APP_URL not in _APP_URL_DEFAULTS:
+        return settings.APP_URL.rstrip("/")
+    if _detected_public_url:
+        return _detected_public_url
+    return settings.APP_URL.rstrip("/")
