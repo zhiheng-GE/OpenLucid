@@ -850,6 +850,7 @@ window.I18N = {
       activate_failed: 'Activation failed: ',
       delete_failed: 'Delete failed: ',
       confirm_delete_provider: 'Confirm delete "{label}"?',
+      mcp_app_url_warning: 'APP_URL is not configured — MCP agents cannot share asset links. Set APP_URL in docker/.env to your public address (e.g. https://your-domain or http://nas-ip:port) and restart.',
       // MCP
       nav_integrations: 'Integrations',
       nav_mcp: 'MCP Service',
@@ -1007,6 +1008,7 @@ window.I18N = {
       activate_failed: '激活失败：',
       delete_failed: '删除失败：',
       confirm_delete_provider: '确认删除「{label}」？',
+      mcp_app_url_warning: 'APP_URL 未配置 — MCP agent 无法分享素材链接。请在 docker/.env 中设置 APP_URL 为可访问地址（如 https://你的域名 或 http://NAS地址:端口）并重启。',
       // MCP
       nav_integrations: '集成',
       nav_mcp: 'MCP 服务',

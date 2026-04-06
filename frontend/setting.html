@@ -417,9 +417,15 @@
           </div>
 
           <!-- MCP -->
-          <div x-show="section==='mcp'" x-cloak x-data="mcpSection()" x-init="loadMcpTokens()">
+          <div x-show="section==='mcp'" x-cloak x-data="mcpSection()" x-init="loadMcpTokens(); checkAppUrl()">
             <h2 class="text-lg font-semibold text-gray-900 mb-1" x-text="t('mcp_title')"></h2>
             <p class="text-sm text-gray-500 mb-6" x-text="t('mcp_subtitle')"></p>
+
+            <!-- APP_URL warning -->
+            <div x-show="appUrlMissing" x-cloak class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+              <svg class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <p class="text-sm text-amber-800" x-text="t('mcp_app_url_warning')"></p>
+            </div>
 
             <!-- 1. Connect -->
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
@@ -830,6 +836,7 @@
 
     function mcpSection() {
       return {
+        appUrlMissing: false,
         copiedField: '',
         mcpTokens: [],
         showTokenForm: false,
@@ -900,6 +907,13 @@
           ]},
         ],
 
+        async checkAppUrl() {
+          try {
+            const res = await fetch('/api/v1/settings/app-url-status');
+            if (res.ok) { const d = await res.json(); this.appUrlMissing = !d.configured; }
+          } catch {}
+        },
+
         async loadMcpTokens() {
           try {
             const res = await fetch('/api/v1/settings/mcp-tokens');
@@ -941,16 +955,24 @@
           if (this.promptLoaded || this.promptLoading) return;
           this.promptLoading = true;
           try {
-            const mRes = await fetch('/api/v1/merchants?page=1&page_size=1');
-            if (!mRes.ok) return;
-            const mData = await mRes.json();
-            const merchant = (mData.items || [])[0];
+            // Use same workspace as index.html (localStorage cached merchant)
+            const savedId = localStorage.getItem('od_workspace_id');
+            let merchant = null;
+            if (savedId) {
+              const r = await fetch(`/api/v1/merchants/${savedId}`);
+              if (r.ok) merchant = await r.json();
+            }
+            if (!merchant) {
+              const mRes = await fetch('/api/v1/merchants?page=1&page_size=1');
+              if (mRes.ok) { const d = await mRes.json(); merchant = (d.items || [])[0]; }
+            }
             if (!merchant) return;
             this.promptMerchantName = merchant.name;
             const oRes = await fetch(`/api/v1/offers?merchant_id=${merchant.id}&page=1&page_size=50`);
-            if (!oRes.ok) return;
-            const oData = await oRes.json();
-            this.promptOfferNames = (oData.items || []).map(o => o.name);
+            if (oRes.ok) {
+              const oData = await oRes.json();
+              this.promptOfferNames = (oData.items || []).map(o => o.name);
+            }
             this.promptLoaded = true;
           } catch {}
           this.promptLoading = false;
@@ -976,6 +998,7 @@
               `1. 先调用 get_merchant_overview 了解企业全貌`,
               `2. 再调用 get_offer_context_summary 深入了解具体产品`,
               `3. 最后调用 run_app 执行任务（知识库问答 / 脚本创作 / 选题生成）`,
+              `4. 需要素材时，调用 search_assets（支持 q 模糊搜索、tags 标签过滤、asset_type 类型过滤），直接分享 preview_url`,
               ``,
               `## 引导提示词`,
               `- 需要快速了解商户时，使用 onboard_merchant 提示词`,
@@ -996,6 +1019,7 @@
             `1. Call get_merchant_overview to understand the business at a glance`,
             `2. Call get_offer_context_summary to dive into a specific product`,
             `3. Call run_app to execute tasks (KB Q&A / Script Writer / Topic Studio)`,
+            `4. For assets/images, call search_assets (supports q fuzzy search, tags filter, asset_type filter) — share the preview_url directly`,
             ``,
             `## Guided prompts`,
             `- Use onboard_merchant prompt to quickly understand a merchant`,

@@ -240,6 +240,14 @@ async def check_version():
     return result
 
 
+@router.get("/app-url-status")
+async def app_url_status():
+    """Check if APP_URL is configured for public access."""
+    from app.config import settings
+    configured = settings.APP_URL not in ("http://localhost", "http://localhost:8000")
+    return {"configured": configured, "current": settings.APP_URL}
+
+
 @router.get("/logs")
 async def get_logs(n: int = Query(100, le=200)):
     from app.libs.log_buffer import get_log_handler

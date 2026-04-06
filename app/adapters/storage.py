@@ -29,6 +29,10 @@ class StorageAdapter(ABC):
     def get_absolute_path(self, storage_uri: str) -> str:
         """Get absolute filesystem path for the file."""
 
+    def get_public_url(self, asset_id: str) -> str:
+        """Public URL for an asset. Override in OSS/NAS subclasses."""
+        return f"{settings.APP_URL.rstrip('/')}/api/v1/assets/{asset_id}/file"
+
 
 class LocalStorageAdapter(StorageAdapter):
     def __init__(self, base_path: str | None = None):

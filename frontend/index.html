@@ -69,7 +69,32 @@
   <!-- Main -->
   <div class="flex-1 flex flex-col overflow-hidden">
     <header class="h-14 bg-white border-b flex items-center justify-between px-6 shrink-0">
-      <h1 class="text-base font-semibold text-gray-800" x-text="t('header_title')"></h1>
+      <div class="flex items-center gap-2">
+        <template x-if="editingName">
+          <input x-ref="headerNameInput" x-model="newCompanyName" type="text"
+                 class="text-base font-semibold text-gray-800 border border-accent rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-accent/30 w-48"
+                 @keydown.enter="saveCompanyName()" @keydown.escape="editingName=false"
+                 @blur="saveCompanyName()">
+        </template>
+        <template x-if="!editingName">
+          <div class="flex items-center gap-2">
+            <select x-show="merchants.length > 1"
+                    class="text-base font-semibold text-gray-800 border-none bg-transparent focus:outline-none cursor-pointer pr-6"
+                    :value="workspace?.id"
+                    @change="switchWorkspace($event.target.value)">
+              <template x-for="m in merchants" :key="m.id">
+                <option :value="m.id" x-text="m.name" :selected="m.id === workspace?.id"></option>
+              </template>
+            </select>
+            <h1 x-show="merchants.length <= 1" class="text-base font-semibold text-gray-800"
+                x-text="workspace?.name || t('header_title')"></h1>
+            <button @click="editingName=true; newCompanyName=workspace?.name||''; $nextTick(()=>$refs.headerNameInput?.focus())"
+                    class="text-gray-300 hover:text-accent transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+          </div>
+        </template>
+      </div>
       <div class="flex items-center gap-3">
         <button @click="openWizard()" class="bg-accent text-white px-4 py-[7px] rounded-lg text-[13px] font-medium hover:bg-accent-hover transition-colors flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -112,34 +137,6 @@
         <button @click="openWizard()" class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-accent-hover" x-text="t('create_offer')"></button>
       </div>
 
-      <!-- Company name banner -->
-      <div x-show="!loading && !dbError && isDefaultName && !nameBannerDismissed" x-cloak
-           class="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-        <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <template x-if="!editingName">
-          <div class="flex-1 flex items-center gap-2 min-w-0">
-            <p class="text-sm text-amber-800" x-text="t('name_banner_hint')"></p>
-            <button @click="editingName=true; $nextTick(()=>$refs.nameInput?.focus())"
-                    class="text-xs font-medium text-accent hover:text-accent-hover shrink-0" x-text="t('name_banner_set')"></button>
-          </div>
-        </template>
-        <template x-if="editingName">
-          <div class="flex-1 flex items-center gap-2">
-            <input x-ref="nameInput" x-model="newCompanyName" type="text" :placeholder="t('name_banner_placeholder')"
-                   class="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-white"
-                   @keydown.enter="saveCompanyName()" @keydown.escape="editingName=false">
-            <button @click="saveCompanyName()" :disabled="!newCompanyName.trim() || savingName"
-                    class="bg-accent text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
-                    x-text="savingName ? '...' : t('btn_save')"></button>
-            <button @click="editingName=false" class="text-gray-400 hover:text-gray-600">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-          </div>
-        </template>
-        <button x-show="!editingName" @click="nameBannerDismissed=true" class="text-amber-400 hover:text-amber-600 shrink-0">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
 
       <!-- Completeness Summary (compact bar) -->
       <div x-show="!loading && !dbError && scoresLoaded" x-cloak x-data="{ scoreExpanded: false }" class="mb-4">
@@ -537,42 +534,41 @@
 
     async function ensureWorkspace() {
       try {
-        // 1. If we have a saved ID, verify it still exists
+        // 1. Load all merchants
+        const res = await fetch(`${API}/merchants?page=1&page_size=100`);
+        if (!res.ok) return { merchant: null, merchants: [] };
+        const data = await res.json();
+        const all = data.items || [];
+
+        // 2. If we have a saved ID that still exists, use it
         const savedId = localStorage.getItem(WORKSPACE_KEY);
         if (savedId) {
-          const res = await fetch(`${API}/merchants/${savedId}`);
-          if (res.ok) return await res.json();
-          // Saved merchant gone (e.g. DB reset) — fall through to find/create
+          const saved = all.find(m => m.id === savedId);
+          if (saved) return { merchant: saved, merchants: all };
           localStorage.removeItem(WORKSPACE_KEY);
         }
 
-        // 2. Look for a workspace merchant
-        const res = await fetch(`${API}/merchants?page=1&page_size=100`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        // Prefer named workspace; fallback: only merchant; fallback: first in list
-        const wsNames = ['My Workspace', '我的工作区'];
-        const mine = data.items.find(m => wsNames.includes(m.name))
-          || (data.items.length === 1 ? data.items[0] : null)
-          || data.items[0] || null;
-        if (mine) { localStorage.setItem(WORKSPACE_KEY, mine.id); return mine; }
+        // 3. Pick first merchant, or create one
+        if (all.length > 0) {
+          localStorage.setItem(WORKSPACE_KEY, all[0].id);
+          return { merchant: all[0], merchants: all };
+        }
 
-        // 3. No workspace yet — create one
         const create = await fetch(`${API}/merchants`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: t('my_workspace'), merchant_type: 'goods' }),
         });
-        if (!create.ok) return null;
+        if (!create.ok) return { merchant: null, merchants: [] };
         const created = await create.json();
         localStorage.setItem(WORKSPACE_KEY, created.id);
-        return created;
-      } catch { return null; }
+        return { merchant: created, merchants: [created] };
+      } catch { return { merchant: null, merchants: [] }; }
     }
 
     function app() {
       return {
-        workspace: null, offers: [], loading: false, dbError: false,
-        editingName: false, newCompanyName: '', savingName: false, nameBannerDismissed: false,
+        workspace: null, merchants: [], offers: [], loading: false, dbError: false,
+        editingName: false, newCompanyName: '', savingName: false,
         companyScore: null, offerScores: {}, scoresLoaded: false,
         aiReady: null, // null=checking, true=ready, false=not configured
         aiProvider: null, // provider name from /ai/status
@@ -603,10 +599,6 @@
           return c;
         },
 
-        get isDefaultName() {
-          const n = this.workspace?.name;
-          return !n || n === 'My Workspace' || n === '我的工作区';
-        },
 
         async saveCompanyName() {
           if (!this.newCompanyName.trim() || !this.workspace) return;
@@ -618,6 +610,8 @@
             });
             if (res.ok) {
               this.workspace = await res.json();
+              const idx = this.merchants.findIndex(m => m.id === this.workspace.id);
+              if (idx >= 0) this.merchants[idx] = this.workspace;
               this.editingName = false;
               this.newCompanyName = '';
             }
@@ -627,9 +621,23 @@
 
         async init() {
           document.title = t('page_title') + ' - OpenLucid';
-          this.workspace = await ensureWorkspace();
+          const ws = await ensureWorkspace();
+          this.workspace = ws.merchant;
+          this.merchants = ws.merchants;
           if (!this.workspace) { this.dbError = true; return; }
           await Promise.all([this.fetchOffers(), this.checkAI(), this.fetchScores()]);
+        },
+
+        async switchWorkspace(id) {
+          const m = this.merchants.find(m => m.id === id);
+          if (!m || m.id === this.workspace.id) return;
+          localStorage.setItem(WORKSPACE_KEY, m.id);
+          this.workspace = m;
+          this.offers = [];
+          this.companyScore = null;
+          this.offerScores = {};
+          this.scoresLoaded = false;
+          await Promise.all([this.fetchOffers(), this.fetchScores()]);
         },
 
         async checkAI() {
