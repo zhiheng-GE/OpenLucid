@@ -1090,9 +1090,9 @@
           document.title = t('page_title') + ' - OpenLucid';
           if (this.section === 'llm') this.loadLLMConfigs();
           if (this.section === 'service') this.startLogPolling();
+          // checkUpdate covers both the update section display and the nav dot indicator
           if (this.section === 'update') this.checkUpdate();
-          // Background version check for nav dot indicator
-          this.checkUpdateSilent();
+          else this.checkUpdateSilent();
         },
 
         pushState(s) {

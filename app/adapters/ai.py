@@ -310,7 +310,7 @@ class OpenAICompatibleAdapter(AIAdapter):
         last_err = None
         for attempt in range(3):
             try:
-                deadline = asyncio.get_event_loop().time() + timeout
+                deadline = asyncio.get_running_loop().time() + timeout
                 stream = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -321,7 +321,7 @@ class OpenAICompatibleAdapter(AIAdapter):
                     stream=True,
                 )
                 async for chunk in stream:
-                    if asyncio.get_event_loop().time() > deadline:
+                    if asyncio.get_running_loop().time() > deadline:
                         raise TimeoutError(f"LLM stream exceeded {timeout}s total timeout")
                     delta = chunk.choices[0].delta if chunk.choices else None
                     if delta and delta.content:
@@ -1010,7 +1010,7 @@ class AnthropicMessagesAdapter(OpenAICompatibleAdapter):
         last_err = None
         for attempt in range(3):
             try:
-                deadline = asyncio.get_event_loop().time() + timeout
+                deadline = asyncio.get_running_loop().time() + timeout
                 async with httpx.AsyncClient() as client:
                     async with client.stream(
                         "POST",
@@ -1028,7 +1028,7 @@ class AnthropicMessagesAdapter(OpenAICompatibleAdapter):
                     ) as response:
                         response.raise_for_status()
                         async for line in response.aiter_lines():
-                            if asyncio.get_event_loop().time() > deadline:
+                            if asyncio.get_running_loop().time() > deadline:
                                 raise TimeoutError(f"Anthropic stream exceeded {timeout}s")
                             if not line.startswith("data: "):
                                 continue

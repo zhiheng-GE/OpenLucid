@@ -159,29 +159,16 @@ async def check_version():
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            # Try releases first (has release notes)
             resp = await client.get(
-                f"https://api.github.com/repos/{REPO}/releases/latest",
+                f"https://api.github.com/repos/{REPO}/tags?per_page=1",
                 headers={"Accept": "application/vnd.github+json"},
             )
             if resp.status_code == 200:
-                data = resp.json()
-                latest = data.get("tag_name", "").lstrip("v")
-                result["latest"] = latest
-                result["release_url"] = data.get("html_url")
-                result["release_notes"] = data.get("body", "")[:500]
-            else:
-                # No releases — get latest tag from GitHub API
-                resp2 = await client.get(
-                    f"https://api.github.com/repos/{REPO}/tags?per_page=1",
-                    headers={"Accept": "application/vnd.github+json"},
-                )
-                if resp2.status_code == 200:
-                    tags = resp2.json()
-                    if tags:
-                        latest = tags[0]["name"].lstrip("v")
-                        result["latest"] = latest
-                        result["release_url"] = f"https://github.com/{REPO}"
+                tags = resp.json()
+                if tags:
+                    latest = tags[0]["name"].lstrip("v")
+                    result["latest"] = latest
+                    result["release_url"] = f"https://github.com/{REPO}"
     except Exception:
         pass
 
