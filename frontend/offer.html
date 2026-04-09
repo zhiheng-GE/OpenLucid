@@ -208,6 +208,37 @@
               </div>
             </div>
 
+            <!-- Agent activation hint (shown when KB is built but no agent connected yet) -->
+            <div x-show="agentHintVisible" x-cloak
+                 class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-5">
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                  <span class="text-xl">🎉</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h3 class="text-sm font-semibold text-gray-900 mb-1" x-text="t('agent_hint_title')"></h3>
+                  <p class="text-xs text-gray-600 leading-relaxed mb-3"
+                     x-text="t('agent_hint_body').replace('{kb}', overview?.knowledge_count ?? 0).replace('{sp}', overview?.knowledge_by_type?.selling_point ?? 0)"></p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button @click="copyAgentSetup(false)"
+                            class="inline-flex items-center gap-1.5 bg-accent text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-accent-hover transition">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                      <span x-text="hintCopiedField === 'all' ? t('agent_hint_copied') : t('agent_hint_copy_all')"></span>
+                    </button>
+                    <button @click="copyAgentSetup(true)"
+                            class="inline-flex items-center gap-1.5 bg-white text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-medium hover:border-accent hover:text-accent transition">
+                      <span x-text="hintCopiedField === 'prompt' ? t('agent_hint_copied') : t('agent_hint_copy_prompt')"></span>
+                    </button>
+                    <a href="/setting.html?section=mcp" class="text-xs text-gray-500 hover:text-accent px-2 py-1.5" x-text="t('agent_hint_learn_more')"></a>
+                    <button @click="dismissAgentHint()"
+                            class="ml-auto text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5"
+                            x-text="t('agent_hint_dismiss')"></button>
+                  </div>
+                  <p class="text-[10px] text-gray-400 mt-2" x-text="t('agent_hint_node_note')"></p>
+                </div>
+              </div>
+            </div>
+
             <!-- Missing items -->
             <div x-show="(overview?.missing?.length ?? 0) > 0"
                  class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex flex-wrap gap-2 items-center">
@@ -1254,6 +1285,94 @@
         unitForm: { name: '', audience_segment: '', scenario: '', marketing_objective: '', channel: '', strategy_stage: 'exploring', notes: '' },
         audienceOptions: [], scenarioOptions: [],
 
+        // Agent activation hint (shown on overview tab when KB is built but no MCP tokens yet)
+        merchantName: '',
+        mcpHasTokens: false,
+        hintDismissed: false,
+        hintCopiedField: '',  // 'all' | 'prompt' for copy feedback
+        get agentHintVisible() {
+          // Show when: enough KB built AND not dismissed AND user hasn't connected an agent yet
+          const kbCount = this.overview?.knowledge_count ?? 0;
+          return kbCount >= 5 && !this.hintDismissed && !this.mcpHasTokens;
+        },
+        get agentMcpEndpoint() {
+          return `${location.protocol}//${location.host}/mcp/sse`;
+        },
+        get agentInstallCommand() {
+          return `npx add-mcp ${this.agentMcpEndpoint} --transport sse -n openlucid`;
+        },
+        get agentSystemPrompt() {
+          const lang = (window._odLang || 'zh') === 'en' ? 'en' : 'zh';
+          const merchant = this.merchantName || (lang === 'en' ? 'your company' : '你的公司');
+          const offerName = this.offer?.name || '';
+          const kbCount = this.overview?.knowledge_count ?? 0;
+          const spCount = this.overview?.knowledge_by_type?.selling_point ?? 0;
+          if (lang === 'zh') {
+            return [
+              `## 角色`,
+              `你是「${merchant}」的 AI 首席市场官。`,
+              `当前商品是「${offerName}」，已经在 OpenLucid 知识库里有 ${kbCount} 条知识、${spCount} 个核心卖点。`,
+              `所有营销任务都通过 OpenLucid MCP 工具完成。`,
+              ``,
+              `## 读取工作流`,
+              `1. 调用 get_offer_context_summary(offer_id="${this.offerId}") 拉取本商品全部上下文`,
+              `2. 用拉到的知识、卖点、品牌规范回答用户问题或写文案`,
+              `3. 需要素材时，调用 search_assets 并直接分享 preview_url`,
+              ``,
+              `## 回收工作流（重要）`,
+              `当你产出最终被用户认可的内容（文案/脚本/邮件/钩子），主动调用 save_creation 把它存回这个商品的创作库，避免淹没在聊天记录里。`,
+              `- 触发场景：用户说"就用这个"、"这版可以"、"保留"，或者从多个版本里挑了一条`,
+              `- 只存最终版，不存每一稿草稿`,
+              `- 调用时填 title + content，offer_id 用 ${this.offerId}`,
+              ``,
+              `## 当前商品 ID`,
+              `${this.offerId}`,
+            ].join('\n');
+          }
+          return [
+            `## Role`,
+            `You are the AI Chief Marketing Officer for "${merchant}".`,
+            `The current product is "${offerName}" — already in OpenLucid with ${kbCount} knowledge items and ${spCount} core selling points.`,
+            `Use OpenLucid MCP tools for all marketing tasks.`,
+            ``,
+            `## Read workflow`,
+            `1. Call get_offer_context_summary(offer_id="${this.offerId}") to pull full product context`,
+            `2. Use the retrieved knowledge, selling points, and brand kit to answer questions or write copy`,
+            `3. For images/videos, call search_assets and share preview_url directly`,
+            ``,
+            `## Capture workflow (important)`,
+            `When you produce a final, user-accepted piece of content (copy/script/email/hook), proactively call save_creation to store it back in this product's library so it doesn't get lost in chat history.`,
+            `- Triggers: user says "use this", "this works", "keep this", or picks one option from multiple variants`,
+            `- Save only the final version, not every draft`,
+            `- Pass title + content, and offer_id="${this.offerId}"`,
+            ``,
+            `## Current product ID`,
+            `${this.offerId}`,
+          ].join('\n');
+        },
+        get agentCombinedSnippet() {
+          const lang = (window._odLang || 'zh') === 'en' ? 'en' : 'zh';
+          const header1 = lang === 'en' ? '# 1. Install OpenLucid MCP into your AI client' : '# 1️⃣ 安装 OpenLucid MCP 到你的 AI 客户端';
+          const header1note = lang === 'en'
+            ? '# Auto-detects Claude Code, Claude Desktop, Cursor, Cline, Codex, Gemini CLI, VS Code, Zed and more'
+            : '# 自动识别 Claude Code、Claude Desktop、Cursor、Cline、Codex、Gemini CLI、VS Code、Zed 等';
+          const header2 = lang === 'en'
+            ? '# 2. After install, paste the following as the agent system prompt:'
+            : '# 2️⃣ 安装完成后，把下面这段贴给 agent 当 system prompt：';
+          return [
+            header1,
+            header1note,
+            '',
+            this.agentInstallCommand,
+            '',
+            '---',
+            '',
+            header2,
+            '',
+            this.agentSystemPrompt,
+          ].join('\n');
+        },
+
         get selectedCount() {
           if (!this.suggestions) return 0;
           let c = 0;
@@ -1266,7 +1385,51 @@
           const res = await fetch(`${API}/offers/${this.offerId}`);
           this.offer = await res.json();
           document.title = `${this.offer.name} - OpenLucid`;
-          await Promise.all([this.fetchKnowledge(), this.fetchAssets(), this.fetchOverview()]);
+          this.hintDismissed = localStorage.getItem(`od_dismissed_mcp_hint_${this.offerId}`) === '1';
+          await Promise.all([
+            this.fetchKnowledge(),
+            this.fetchAssets(),
+            this.fetchOverview(),
+            this.fetchMerchantName(),
+            this.fetchMcpTokenStatus(),
+          ]);
+        },
+
+        async fetchMerchantName() {
+          if (!this.offer?.merchant_id) return;
+          try {
+            const r = await fetch(`${API}/merchants/${this.offer.merchant_id}`);
+            if (r.ok) {
+              const m = await r.json();
+              this.merchantName = m.name || '';
+            }
+          } catch {}
+        },
+
+        async fetchMcpTokenStatus() {
+          try {
+            const r = await fetch(`${API}/settings/mcp-tokens`);
+            if (r.ok) {
+              const tokens = await r.json();
+              this.mcpHasTokens = Array.isArray(tokens) && tokens.length > 0;
+            }
+          } catch {}
+        },
+
+        dismissAgentHint() {
+          this.hintDismissed = true;
+          localStorage.setItem(`od_dismissed_mcp_hint_${this.offerId}`, '1');
+        },
+
+        async copyAgentSetup(promptOnly) {
+          const text = promptOnly ? this.agentSystemPrompt : this.agentCombinedSnippet;
+          try {
+            await navigator.clipboard.writeText(text);
+            this.hintCopiedField = promptOnly ? 'prompt' : 'all';
+            setTimeout(() => { this.hintCopiedField = ''; }, 2000);
+          } catch (e) {
+            console.error('copy failed', e);
+          }
         },
 
         async fetchOverview() {
