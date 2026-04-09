@@ -12,6 +12,7 @@ class TopicPlanGenerateRequest(BaseModel):
     count: int = Field(5, ge=1, le=20)
     strategy_unit_id: uuid.UUID | None = None
     config_id: str | None = None
+    instruction: str | None = Field(None, max_length=1000)
 
 
 class TopicPlanResponse(BaseModel):

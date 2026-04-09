@@ -201,6 +201,26 @@
 
             <!-- Generate Card -->
             <div class="bg-white rounded-xl border p-6">
+              <!-- Creative brief (free-text instruction) -->
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                  <span x-text="t('topic_instruction_label')"></span>
+                  <span class="text-xs text-gray-400 font-normal" x-text="t('topic_instruction_optional')"></span>
+                </label>
+                <textarea x-model="form.instruction"
+                          rows="2"
+                          maxlength="1000"
+                          :placeholder="t('topic_instruction_placeholder')"
+                          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none"></textarea>
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  <template x-for="ex in instructionExamples" :key="ex">
+                    <button type="button"
+                            @click="form.instruction = ex"
+                            class="text-[11px] text-gray-500 bg-gray-50 hover:bg-gray-100 hover:text-gray-700 px-2 py-0.5 rounded transition-colors"
+                            x-text="ex"></button>
+                  </template>
+                </div>
+              </div>
               <div class="flex items-end gap-5 flex-wrap">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1.5" x-text="t('count_label')"></label>
@@ -352,7 +372,23 @@
         loadingCtx: false,
 
         // Generate form
-        form: { count: 5 },
+        form: { count: 5, instruction: '' },
+        get instructionExamples() {
+          const isEn = (window._odLang || 'zh') === 'en';
+          return isEn ? [
+            'Tie this to a trending topic on TikTok or Reddit',
+            'Riff on the hottest AI tool everyone is talking about',
+            'Make a few contrasting before/after angles',
+            'Start from a real customer pain point',
+            'Use scroll-stopping POV hooks that feel native to short-form',
+          ] : [
+            '结合最近抖音热门话题做选题',
+            '蹭一下当前最火的 AI 工具',
+            '做几个反差感强的对比选题',
+            '从用户痛点角度切入',
+            '做一些有网感的悬念开头',
+          ];
+        },
         generating: false,
         genProgress: 0,
         genStep: '',
@@ -514,6 +550,7 @@
               strategy_unit_id: this.strategyUnitId || undefined,
               config_id: this.configId || undefined,
               language: getApiLang(),
+              instruction: this.form.instruction?.trim() || undefined,
             };
             const res = await fetch(`${API}/apps/topic-studio/run`, {
               method: 'POST',

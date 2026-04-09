@@ -52,6 +52,7 @@ class AIAdapter(ABC):
         existing_titles: list[str] | None = None,
         liked_titles: list[dict[str, str]] | None = None,
         disliked_titles: list[dict[str, str]] | None = None,
+        user_instruction: str | None = None,
     ) -> list[dict[str, Any]]:
         """Generate topic plan candidates. Each dict should contain:
         title, angle, hook, key_points, target_audience, target_scenario,
@@ -124,6 +125,7 @@ class StubAIAdapter(AIAdapter):
         existing_titles: list[str] | None = None,
         liked_titles: list[dict[str, str]] | None = None,
         disliked_titles: list[dict[str, str]] | None = None,
+        user_instruction: str | None = None,
     ) -> list[dict[str, Any]]:
         offer = offer_context.get("offer", {})
         offer_name = offer.get("name", "Product")
@@ -404,6 +406,7 @@ class OpenAICompatibleAdapter(AIAdapter):
         existing_titles: list[str] | None = None,
         liked_titles: list[dict[str, str]] | None = None,
         disliked_titles: list[dict[str, str]] | None = None,
+        user_instruction: str | None = None,
     ) -> list[dict[str, Any]]:
         offer = offer_context.get("offer", {})
         offer_name = offer.get("name", "商品")
@@ -424,6 +427,25 @@ class OpenAICompatibleAdapter(AIAdapter):
 
         lang_instruction = "All output text (title, hook, key_points, etc.) MUST be in English." if is_en else "所有输出文本（title、hook、key_points 等）必须使用中文。"
 
+        if is_en:
+            viral_signals_block = """
+
+## Viral Signals (Always Apply)
+- Titles should NOT read like instructional copy ("How to X", "Tips for X") — write like a viral creator post
+- Hooks must grab attention in the first 3 seconds — never neutral statements
+- Prefer: contrast, suspense, emotion, numbers, comparison, first-person mistakes
+- Avoid: standard marketing speak, official tone, adjective stacking
+- Each title should contain a concrete visual or emotional cue"""
+        else:
+            viral_signals_block = """
+
+## 网感要求（默认开启）
+- title 不要写「教你 X」「分享 X」这种说明文风——要写成像朋友圈/小红书爆款标题
+- hook 必须是前 3 秒能勾住的话，不能是中性陈述
+- 优先使用：反差、悬念、情绪、数字、对比、第一人称踩坑
+- 避免：标准营销话术、官腔、形容词堆砌
+- 每个标题至少含 1 个具象画面或情绪词"""
+
         system = f"""You are a senior short-video content director skilled at planning viral content topics for products/services.
 Generate highly relevant content topic plans based on the product info and strategy focus provided.
 
@@ -436,6 +458,7 @@ Requirements:
 6. If existing topics are provided below, you MUST avoid repeating similar titles or angles — find fresh perspectives
 7. If liked topics (👍) are provided, learn from their style, angle, and tone — generate more topics like them
 8. If disliked topics (👎) are provided, avoid their style, angle, and approach
+{viral_signals_block}
 
 Return a strict JSON array. Each element:
 {{
@@ -472,15 +495,59 @@ Return JSON array only, no other text."""
         asset_text = format_asset_context(asset_items, language=language)
 
         na = "N/A" if is_en else "暂无"
-        user = f"""{"Product: " if is_en else "商品名称："}{offer_name}
+
+        # Build instruction intro/outro (only if user provided a creative brief).
+        # Position: top + bottom of user message (sandwich the KB), so the brief
+        # is the first and last thing the model sees. Works equally well across
+        # strong (Claude/GPT-4) and weaker (Qwen, Llama) models because it relies
+        # only on universal position-based attention, not model-specific phrasing.
+        instruction_intro = ""
+        instruction_outro = ""
+        if user_instruction:
+            if is_en:
+                instruction_intro = f"""## Creative Brief
+{user_instruction}
+
+This brief is the primary intent of this request — it should shape the topics, not be treated as a side note.
+- If the brief mentions external trends, platforms, tools, or events: interpret them in context and create authentic connections to the product
+- If you're unfamiliar with a specific term, treat it as a current trending reference and find a semantic bridge — don't drop it, don't refuse
+
+---
+
+"""
+                instruction_outro = f"""
+
+Generate {count} topic plans that honor the Creative Brief above. The brief should be visible as the creative spine of the topics, not just a side mention."""
+            else:
+                instruction_intro = f"""## 创意指令
+{user_instruction}
+
+这条指令是本次请求的核心意图，应该塑造选题的主轴，而不是被当成附加说明。
+- 如果指令提到外部热点、平台、工具或事件：先理解它的语境，再和商品建立真实可信的连接
+- 如果你不熟悉某个具体名词，把它当成当下的热门话题，找到语义层面的桥梁——不要忽略，也不要拒绝
+
+---
+
+"""
+                instruction_outro = f"""
+
+请生成 {count} 个能体现上方「创意指令」的选题方案。指令应该作为选题的创作主轴可见，而不是顺带提一下。"""
+
+        if user_instruction:
+            tail = instruction_outro
+        elif is_en:
+            tail = f"\nGenerate {count} content topic plans that closely match the strategy focus above."
+        else:
+            tail = f"\n请生成 {count} 个高度契合以上策略聚焦的内容选题方案。"
+
+        user = f"""{instruction_intro}{"Product: " if is_en else "商品名称："}{offer_name}
 {"Core selling points: " if is_en else "核心卖点："}{', '.join(selling_points) if selling_points else na}
 {"Target audience: " if is_en else "目标人群："}{', '.join(audiences) if audiences else na}
 {"Scenarios: " if is_en else "适用场景："}{', '.join(scenarios) if scenarios else na}
 {channel_desc}{strategy_focus}
 {knowledge_text}
 {asset_text}
-{self._format_existing_titles(existing_titles, is_en)}{self._format_rated_titles(liked_titles, disliked_titles, is_en)}
-{"Generate" if is_en else "请生成"} {count} {"content topic plans that closely match the strategy focus above." if is_en else "个高度契合以上策略聚焦的内容选题方案。"}"""
+{self._format_existing_titles(existing_titles, is_en)}{self._format_rated_titles(liked_titles, disliked_titles, is_en)}{tail}"""
 
         logger.info(
             "Generating %d topic plans for offer '%s'%s via %s",

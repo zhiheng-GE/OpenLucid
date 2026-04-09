@@ -105,6 +105,7 @@ class TopicPlanService:
             existing_titles=existing_titles or None,
             liked_titles=liked_topics or None,
             disliked_titles=disliked_topics or None,
+            user_instruction=request.instruction,
         )
 
         logger.info("Topic Studio: generated %d plans", len(raw_plans))

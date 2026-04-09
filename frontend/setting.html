@@ -876,7 +876,7 @@
           return JSON.stringify(config, null, 2);
         },
         get mcpCliTemplate() {
-          const base = `claude mcp add openlucid --transport sse ${this.mcpEndpoint}`;
+          const base = `npx add-mcp ${this.mcpEndpoint} --transport sse -n openlucid`;
           if (!this.mcpHasAuth) return base;
           return `${base} \\\n  --header "Authorization: Bearer ${this.mcpTokenPlaceholder}"`;
         },
