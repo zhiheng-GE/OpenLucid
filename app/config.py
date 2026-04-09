@@ -29,9 +29,13 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
 
-    # Feedback widget — when set, in-app feedback button is enabled and submissions
-    # are emailed here. Empty = button hidden in UI. Mail provider must also be configured.
+    # Feedback widget — the in-app feedback button is ALWAYS visible.
+    # When FEEDBACK_TO_EMAIL is set + a mail provider is configured, submissions
+    # are emailed to that address. Otherwise the button falls back to opening
+    # FEEDBACK_FALLBACK_URL (a prefilled GitHub Issues URL by default) — so the
+    # widget works out of the box for self-hosters without any configuration.
     FEEDBACK_TO_EMAIL: str = ""
+    FEEDBACK_FALLBACK_URL: str = "https://github.com/agidesigner/OpenLucid/issues/new"
 
     APP_URL: str = "http://localhost:8000"
 

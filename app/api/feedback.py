@@ -25,17 +25,21 @@ class FeedbackRequest(BaseModel):
 
 
 class FeedbackStatus(BaseModel):
-    enabled: bool
+    enabled: bool          # email backend ready (FEEDBACK_TO_EMAIL + mail provider)
+    fallback_url: str      # where the frontend should redirect if email is not enabled
 
 
 def _is_feedback_enabled() -> bool:
-    """Feedback works only when an email destination AND a mail provider are set."""
+    """Email backend works only when destination AND mail provider are set."""
     return bool(settings.FEEDBACK_TO_EMAIL.strip()) and is_mail_configured()
 
 
 @router.get("/status", response_model=FeedbackStatus)
 async def feedback_status():
-    return FeedbackStatus(enabled=_is_feedback_enabled())
+    return FeedbackStatus(
+        enabled=_is_feedback_enabled(),
+        fallback_url=settings.FEEDBACK_FALLBACK_URL,
+    )
 
 
 @router.post("", status_code=204)

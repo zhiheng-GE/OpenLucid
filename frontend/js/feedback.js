@@ -13,7 +13,13 @@
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('odFeedbackWidget', () => ({
+      // The button is ALWAYS visible. `enabled` only controls submit destination:
+      //   true  → POST to /api/v1/feedback (emailed to FEEDBACK_TO_EMAIL)
+      //   false → window.open(fallbackUrl) prefilled with the message (GitHub Issues by default)
+      // This way the widget works zero-config: self-hosters who don't configure
+      // FEEDBACK_TO_EMAIL still get a working "send feedback to OpenLucid maintainers" button.
       enabled: false,
+      fallbackUrl: 'https://github.com/agidesigner/OpenLucid/issues/new',
       open: false,
       message: '',
       email: '',
@@ -28,6 +34,7 @@
           if (r.ok) {
             const d = await r.json();
             this.enabled = !!d.enabled;
+            if (d.fallback_url) this.fallbackUrl = d.fallback_url;
           }
         } catch {}
       },
@@ -49,10 +56,44 @@
         this.open = false;
       },
 
+      // Build a prefilled GitHub Issue URL with feedback as the body.
+      // GitHub accepts a `body` query param (URL-encoded markdown) on /issues/new.
+      _buildGithubUrl() {
+        const lines = [this.message.trim(), ''];
+        lines.push('---');
+        lines.push('');
+        if (this.includeContext) {
+          lines.push(`Page: ${location.href}`);
+          lines.push(`User-Agent: ${navigator.userAgent}`);
+        }
+        if (this.email.trim()) {
+          lines.push(`Reply-to: ${this.email.trim()}`);
+        }
+        const body = lines.join('\n');
+        const sep = this.fallbackUrl.includes('?') ? '&' : '?';
+        // GitHub URL bodies are limited (~8KB practical); truncate to be safe
+        const encoded = encodeURIComponent(body.slice(0, 6000));
+        return `${this.fallbackUrl}${sep}body=${encoded}`;
+      },
+
       async submit() {
         if (this.message.trim().length < 2 || this.sending) return;
         this.sending = true;
         this.errorMsg = '';
+
+        // Branch: email backend if configured, else open GitHub Issues
+        if (!this.enabled) {
+          try {
+            window.open(this._buildGithubUrl(), '_blank', 'noopener');
+            this.sent = true;
+            setTimeout(() => { this.open = false; }, 1500);
+          } catch (e) {
+            this.errorMsg = e.message || 'Failed to open GitHub';
+          }
+          this.sending = false;
+          return;
+        }
+
         try {
           const body = { message: this.message.trim() };
           if (this.email.trim()) body.email = this.email.trim();
@@ -84,7 +125,7 @@
     el.setAttribute('x-data', 'odFeedbackWidget()');
     el.setAttribute('x-init', 'init()');
     el.innerHTML = `
-<button x-show="enabled && !open" x-cloak
+<button x-show="!open"
         @click="openModal()"
         :title="t('feedback_button_title')"
         class="fixed bottom-5 right-5 z-40 w-11 h-11 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center text-gray-500 hover:text-accent hover:border-accent transition-all hover:scale-105">
@@ -130,15 +171,20 @@
         <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
       </div>
       <p class="text-sm font-medium text-gray-800" x-text="t('feedback_sent_title')"></p>
-      <p class="text-xs text-gray-500 mt-1" x-text="t('feedback_sent_body')"></p>
+      <p class="text-xs text-gray-500 mt-1" x-text="enabled ? t('feedback_sent_body') : t('feedback_sent_github')"></p>
     </div>
 
-    <div x-show="!sent" class="p-4 border-t flex items-center justify-end gap-2">
-      <button @click="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg" x-text="t('feedback_cancel')"></button>
-      <button @click="submit()" :disabled="sending || message.trim().length < 2"
-              class="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent-hover disabled:opacity-50 transition">
-        <span x-text="sending ? t('feedback_sending') : t('feedback_send')"></span>
-      </button>
+    <div x-show="!sent">
+      <div x-show="!enabled" class="px-5 -mt-1 mb-1">
+        <p class="text-[11px] text-gray-400 leading-relaxed" x-text="t('feedback_github_hint')"></p>
+      </div>
+      <div class="p-4 border-t flex items-center justify-end gap-2">
+        <button @click="closeModal()" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg" x-text="t('feedback_cancel')"></button>
+        <button @click="submit()" :disabled="sending || message.trim().length < 2"
+                class="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent-hover disabled:opacity-50 transition">
+          <span x-text="sending ? t('feedback_sending') : (enabled ? t('feedback_send') : t('feedback_send_github'))"></span>
+        </button>
+      </div>
     </div>
   </div>
 </div>`;
