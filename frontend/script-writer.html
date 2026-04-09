@@ -847,12 +847,10 @@ Output language MUST match the language of the knowledge base content and topic.
 
         async copyScript() {
           if (!this.scriptResult) return;
-          try {
-            await navigator.clipboard.writeText(this.scriptResult);
+          const ok = await window.odCopyText(this.scriptResult);
+          if (ok) {
             this.copied = true;
             setTimeout(() => this.copied = false, 2000);
-          } catch(e) {
-            console.error('Copy failed', e);
           }
         },
       };

@@ -1942,6 +1942,48 @@ window.t = function(key) {
 };
 
 
+// ── Clipboard helper ────────────────────────────────────────────────────────
+//
+// `navigator.clipboard.writeText` is only available in secure contexts
+// (HTTPS or localhost). OpenLucid is commonly self-hosted on plain HTTP
+// (LAN, intranet, behind a non-TLS reverse proxy), so we MUST have a
+// fallback or every copy button breaks.
+//
+// Modern API path → HTTPS / localhost
+// Legacy execCommand path → plain HTTP (deprecated but no browser has
+// removed it because there is no other way to copy on insecure contexts)
+//
+// Returns Promise<bool> so callers can show a "Copied!" / "Failed" state.
+
+window.odCopyText = async function(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      // Fall through to legacy fallback (permission denied, etc.)
+    }
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    console.error('odCopyText fallback failed:', e);
+    return false;
+  }
+};
+
+
 // ── API language helper ─────────────────────────────────────────────────────
 
 window.getApiLang = function() {

@@ -1424,12 +1424,10 @@
 
         async copyAgentSetup(promptOnly) {
           const text = promptOnly ? this.agentSystemPrompt : this.agentCombinedSnippet;
-          try {
-            await navigator.clipboard.writeText(text);
+          const ok = await window.odCopyText(text);
+          if (ok) {
             this.hintCopiedField = promptOnly ? 'prompt' : 'all';
             setTimeout(() => { this.hintCopiedField = ''; }, 2000);
-          } catch (e) {
-            console.error('copy failed', e);
           }
         },
 
