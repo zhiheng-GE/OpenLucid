@@ -482,25 +482,6 @@
               </div>
             </div>
 
-            <!-- 1b. Local stdio -->
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="w-2 h-2 bg-violet-400 rounded-full"></span>
-                <h3 class="text-sm font-semibold text-gray-800" x-text="t('mcp_connect_stdio_title')"></h3>
-              </div>
-              <p class="text-xs text-gray-400 mb-4" x-text="t('mcp_connect_stdio_subtitle')"></p>
-
-              <label class="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2" x-text="t('mcp_connect_stdio_json')"></label>
-              <pre class="bg-gray-900 text-green-300 text-xs leading-relaxed font-mono p-3 rounded-xl overflow-auto whitespace-pre mb-1" x-text="mcpStdioConfigJson"></pre>
-              <div class="flex items-center justify-between mb-1">
-                <button @click="copyText(mcpStdioConfigJson); copiedField='stdio'; setTimeout(()=>copiedField='', 2000)"
-                        class="text-xs text-accent hover:text-accent-hover font-medium transition-colors">
-                  <span x-text="copiedField==='stdio' ? t('mcp_copied') : t('mcp_copy_config')"></span>
-                </button>
-              </div>
-              <p class="text-[11px] text-gray-400" x-text="t('mcp_connect_stdio_hint')"></p>
-            </div>
-
             <!-- 2. Access Tokens -->
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
               <div class="flex items-center justify-between mb-1">
@@ -1037,21 +1018,6 @@
           { name: 'login', desc: t('cli_cmd_login') },
           { name: 'setup', desc: t('cli_cmd_setup') },
         ],
-        get mcpStdioConfigJson() {
-          const config = {
-            mcpServers: {
-              openlucid: {
-                type: "stdio",
-                command: "python",
-                args: ["-m", "app.mcp_cli"],
-                env: {
-                  DATABASE_URL: "postgresql+asyncpg://openlucid:openlucid@localhost:5432/openlucid"
-                }
-              }
-            }
-          };
-          return JSON.stringify(config, null, 2);
-        },
         capabilityGroups: [
           { key: 'insights', icon: '\u{1F4CA}', label: t('mcp_cap_insights'), desc: t('mcp_cap_insights_desc'), tools: [
             { name: 'get_merchant_overview', desc: t('mcp_tool_get_merchant_overview') },
